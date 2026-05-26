@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard — CampusConnect</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css"/>
+  <style>
+    /* ── WELCOME BANNER ── */
+    .welcome-banner {
+      background: linear-gradient(135deg, rgba(79,142,247,0.13) 0%, rgba(124,92,252,0.10) 60%, rgba(79,206,142,0.06) 100%);
+      border: 1px solid rgba(79,142,247,0.22);
+      border-radius: var(--radius-lg);
+      padding: 22px 24px 20px;
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .welcome-banner::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at top right, rgba(124,92,252,0.12) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .welcome-banner-emoji {
+      position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+      font-size: 4.5rem; opacity: 0.08; pointer-events: none; line-height: 1;
+    }
+    .welcome-greeting {
+      font-size: 0.78rem; color: var(--accent); font-weight: 700;
+      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 4px;
+    }
+    .welcome-name { font-size: 1.55rem; font-weight: 800; margin-bottom: 4px; line-height: 1.2; }
+    .welcome-sub { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px; }
+
+    /* ── STATS GRID ── */
+    .dash-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+    .dash-stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      padding: 16px 14px;
+      position: relative; overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+      cursor: default;
+    }
+    .dash-stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+    /* colored top border accent */
+    .dash-stat-card::after {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 3px; border-radius: 2px 2px 0 0;
+    }
+    .dash-stat-card.blue::after  { background: linear-gradient(90deg, var(--accent), rgba(79,142,247,0.3)); }
+    .dash-stat-card.purple::after { background: linear-gradient(90deg, var(--accent2), rgba(124,92,252,0.3)); }
+    .dash-stat-card.green::after  { background: linear-gradient(90deg, var(--accent3), rgba(79,206,142,0.3)); }
+    .dash-stat-card.orange::after { background: linear-gradient(90deg, var(--accent-warn), rgba(245,158,11,0.3)); }
+    /* glow blob */
+    .dash-stat-card::before {
+      content: ''; position: absolute; bottom: -18px; right: -18px;
+      width: 70px; height: 70px; border-radius: 50%; opacity: 0.06;
+    }
+    .dash-stat-card.blue::before   { background: var(--accent); }
+    .dash-stat-card.purple::before { background: var(--accent2); }
+    .dash-stat-card.green::before  { background: var(--accent3); }
+    .dash-stat-card.orange::before { background: var(--accent-warn); }
+
+    .dash-stat-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem; margin-bottom: 10px;
+    }
+    .dash-stat-card.blue   .dash-stat-icon { background: var(--accent-soft);   color: var(--accent); }
+    .dash-stat-card.purple .dash-stat-icon { background: var(--accent2-soft);  color: var(--accent2); }
+    .dash-stat-card.green  .dash-stat-icon { background: var(--accent3-soft);  color: var(--accent3); }
+    .dash-stat-card.orange .dash-stat-icon { background: rgba(245,158,11,0.1); color: var(--accent-warn); }
+
+    .dash-stat-value {
+      font-size: 1.75rem; font-weight: 800; line-height: 1;
+      margin-bottom: 3px;
+      font-variant-numeric: tabular-nums;
+    }
+    .dash-stat-card.blue   .dash-stat-value { color: var(--accent); }
+    .dash-stat-card.purple .dash-stat-value { color: var(--accent2); }
+    .dash-stat-card.green  .dash-stat-value { color: var(--accent3); }
+    .dash-stat-card.orange .dash-stat-value { color: var(--accent-warn); }
+    .dash-stat-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; }
+
+    /* ── QUICK ACTIONS ── */
+    .quick-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .quick-action {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      padding: 16px 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+      position: relative; overflow: hidden;
+    }
+    .quick-action:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+    .quick-action:active { transform: scale(0.96); }
+
+    /* per-action accent colors on hover */
+    .quick-action.qa-community:hover { border-color: var(--accent2); }
+    .quick-action.qa-doubt:hover     { border-color: #f97316; }
+    .quick-action.qa-resource:hover  { border-color: var(--accent3); }
+    .quick-action.qa-test:hover      { border-color: var(--accent); }
+    .quick-action.qa-notice:hover    { border-color: var(--accent-warn); }
+    .quick-action.qa-leader:hover    { border-color: #eab308; }
+
+    .quick-action-icon-wrap {
+      width: 46px; height: 46px;
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem; margin: 0 auto 10px;
+    }
+    .qa-community .quick-action-icon-wrap { background: rgba(124,92,252,0.12); }
+    .qa-doubt     .quick-action-icon-wrap { background: rgba(249,115,22,0.12); }
+    .qa-resource  .quick-action-icon-wrap { background: rgba(79,206,142,0.12); }
+    .qa-test      .quick-action-icon-wrap { background: rgba(79,142,247,0.12); }
+    .qa-notice    .quick-action-icon-wrap { background: rgba(245,158,11,0.12); }
+    .qa-leader    .quick-action-icon-wrap { background: rgba(234,179,8,0.12); }
+
+    .quick-action-label { font-size: 0.76rem; font-weight: 700; color: var(--text-secondary); line-height: 1.2; }
+
+    /* ── MOBILE ── */
+    @media (max-width: 768px) {
+      .topbar { display: none; }
+      .main-content { padding-top: 0 !important; }
+      .page-content { padding-top: 12px !important; }
+
+      .welcome-banner { padding: 18px 16px 16px; margin-bottom: 14px; }
+      .welcome-name { font-size: 1.3rem !important; }
+      .welcome-sub { font-size: 0.78rem !important; margin-bottom: 10px; }
+      .welcome-banner-emoji { font-size: 3.5rem; }
+
+      .dash-stats-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+        margin-bottom: 16px;
+      }
+      .dash-stat-card { padding: 14px 12px; }
+      .dash-stat-icon { width: 30px; height: 30px; font-size: 0.85rem; margin-bottom: 8px; }
+      .dash-stat-value { font-size: 1.55rem !important; }
+      .dash-stat-label { font-size: 0.68rem !important; }
+      .dash-stat-card::before { display: none; }
+
+      .quick-actions { grid-template-columns: repeat(3,1fr) !important; gap: 8px !important; }
+      .quick-action { padding: 14px 6px !important; border-radius: 12px !important; }
+      .quick-action-icon-wrap { width: 38px !important; height: 38px !important; font-size: 1.1rem !important; margin-bottom: 8px !important; border-radius: 11px !important; }
+      .quick-action-label { font-size: 0.67rem !important; }
+      .mb-6 { margin-bottom: 16px !important; }
+    }
+  </style>
+</head>
+<body>
+<div id="app-root"></div>
+
+<script type="module">
+import { requireAuth, getSidebarHTML, getLayoutHTML, toast, showLoading, openModal, closeModal, timeAgo, logout } from '../js/app.js?v=76';
+import { db, collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp, getDocs, where, getDoc, doc, updateDoc, increment, arrayUnion, arrayRemove } from '../js/app.js?v=76';
+
+window._logout = logout;
+
+requireAuth((user, userData) => {
+  document.getElementById('app-root').innerHTML = getLayoutHTML('Dashboard', `
+    <div class="page-content">
+
+      <!-- Welcome Banner -->
+      <div class="welcome-banner">
+        <div class="welcome-banner-emoji">🎓</div>
+        <div class="welcome-greeting" id="wb-greeting">Good Morning</div>
+        <div class="welcome-name" id="wb-name">Hello!</div>
+        <div class="welcome-sub" id="wb-sub">Loading...</div>
+
+      </div>
+
+      <!-- Stats -->
+      <div class="dash-stats-grid" id="stats-grid">
+        <div class="dash-stat-card blue">
+          <div class="dash-stat-icon"><i class="fa fa-users"></i></div>
+          <div class="dash-stat-value" id="stat-members"><span class="skeleton skeleton-text" style="width:40px;height:28px;display:inline-block"></span></div>
+          <div class="dash-stat-label">Platform Members</div>
+        </div>
+        <div class="dash-stat-card purple">
+          <div class="dash-stat-icon"><i class="fa fa-comment-dots"></i></div>
+          <div class="dash-stat-value" id="stat-posts"><span class="skeleton skeleton-text" style="width:40px;height:28px;display:inline-block"></span></div>
+          <div class="dash-stat-label">Community Posts</div>
+        </div>
+        <div class="dash-stat-card green">
+          <div class="dash-stat-icon"><i class="fa fa-check-circle"></i></div>
+          <div class="dash-stat-value" id="stat-doubts"><span class="skeleton skeleton-text" style="width:40px;height:28px;display:inline-block"></span></div>
+          <div class="dash-stat-label">Doubts Solved</div>
+        </div>
+        <div class="dash-stat-card orange">
+          <div class="dash-stat-icon"><i class="fa fa-book-open"></i></div>
+          <div class="dash-stat-value" id="stat-resources"><span class="skeleton skeleton-text" style="width:40px;height:28px;display:inline-block"></span></div>
+          <div class="dash-stat-label">Resources Shared</div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="section-header" style="margin-bottom:12px">
+        <div>
+          <div class="section-title" style="display:flex;align-items:center;gap:8px">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:var(--accent-soft);border-radius:8px;font-size:0.9rem">⚡</span>
+            Quick Actions
+          </div>
+        </div>
+      </div>
+      <div class="quick-actions mb-6">
+        <div class="quick-action qa-community" onclick="navigate('communities.html')">
+          <div class="quick-action-icon-wrap">💬</div>
+          <div class="quick-action-label">Post in Community</div>
+        </div>
+        <div class="quick-action qa-doubt" onclick="navigate('doubts.html')">
+          <div class="quick-action-icon-wrap">🤔</div>
+          <div class="quick-action-label">Ask a Doubt</div>
+        </div>
+        <div class="quick-action qa-resource" onclick="navigate('resources.html')">
+          <div class="quick-action-icon-wrap">📤</div>
+          <div class="quick-action-label">Upload Resource</div>
+        </div>
+        <div class="quick-action qa-test" onclick="navigate('tests.html')">
+          <div class="quick-action-icon-wrap">📝</div>
+          <div class="quick-action-label">Take a Test</div>
+        </div>
+        <div class="quick-action qa-notice" onclick="navigate('notices.html')">
+          <div class="quick-action-icon-wrap">📢</div>
+          <div class="quick-action-label">View Notices</div>
+        </div>
+        <div class="quick-action qa-leader" onclick="navigate('leaderboard.html')">
+          <div class="quick-action-icon-wrap">🏆</div>
+          <div class="quick-action-label">Leaderboard</div>
+        </div>
+      </div>
+
+    </div>
+  `, userData.role);
+
+  // Set sidebar nav
+  document.getElementById('sidebar-nav').innerHTML = getSidebarHTML(userData.role);
+
+  // ── Welcome Banner ──
+  const firstName = userData.name.split(' ')[0];
+  document.getElementById('wb-greeting').textContent = `Good ${getGreeting()}`;
+  document.getElementById('wb-name').textContent = `Hello, ${firstName}!`;
+
+  const yearSuffix = ['','st','nd','rd','th'];
+  const y = parseInt(userData.year) || 0;
+  const yearLabel = y ? `${y}${yearSuffix[y] || 'th'} Year` : '';
+  const rep = userData.reputation || 0;
+  document.getElementById('wb-sub').textContent = [userData.dept, yearLabel, `${rep} rep pts`].filter(Boolean).join(' • ');
+
+  loadStats();
+});
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Morning';
+  if (h < 17) return 'Afternoon';
+  return 'Evening';
+}
+
+function countUp(el, target, duration = 900) {
+  if (!el) return;
+  const start = performance.now();
+  const update = (now) => {
+    const progress = Math.min((now - start) / duration, 1);
+    const ease = 1 - Math.pow(1 - progress, 3);
+    el.textContent = Math.round(ease * target);
+    if (progress < 1) requestAnimationFrame(update);
+    else el.textContent = target;
+  };
+  requestAnimationFrame(update);
+}
+
+async function loadStats() {
+  try {
+    const [members, doubts, resources] = await Promise.all([
+      getDocs(query(collection(db, 'users'), limit(1000))),
+      getDocs(query(collection(db, 'doubts'), limit(1000))),
+      getDocs(query(collection(db, 'resources'), limit(1000)))
+    ]);
+    countUp(document.getElementById('stat-members'), members.size);
+    countUp(document.getElementById('stat-doubts'), doubts.size);
+    countUp(document.getElementById('stat-resources'), resources.size);
+    let postCount = 0;
+    const comms = await getDocs(collection(db, 'communities'));
+    for (const comm of comms.docs) {
+      const posts = await getDocs(collection(db, 'communities', comm.id, 'posts'));
+      postCount += posts.size;
+    }
+    countUp(document.getElementById('stat-posts'), postCount);
+  } catch (e) { console.error(e); }
+}
+
+
+</script>
+</body>
+</html>

@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Dashboard — CampusConnect</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    .admin-stats { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); 
+      gap: 12px; 
+      margin-bottom: 20px; 
+    }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      padding: 18px 14px;
+      text-align: center;
+      transition: var(--transition);
+    }
+    .stat-card:hover { transform: translateY(-2px); }
+    .stat-number {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .stat-label { 
+      font-size: 0.78rem; 
+      color: var(--text-muted); 
+      font-weight: 500; 
+    }
+
+    .admin-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px;
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      flex: 1;
+      min-width: 110px;
+      padding: 10px 14px;
+      border: none;
+      background: var(--bg-tertiary);
+      border-radius: 10px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: var(--transition);
+      white-space: nowrap;
+    }
+    .tab-btn.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    .admin-table-wrap { 
+      overflow-x: auto; 
+      border-radius: 12px; 
+      border: 1px solid var(--border-soft); 
+    }
+    .admin-table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      font-size: 0.85rem; 
+      min-width: 600px;
+    }
+    .admin-table th {
+      padding: 14px 16px;
+      text-align: left;
+      background: var(--bg-tertiary);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .admin-table td { 
+      padding: 14px 16px; 
+      border-bottom: 1px solid var(--border-soft); 
+    }
+    .admin-table tr:hover td { background: var(--bg-hover); }
+
+    .action-cell { 
+      display: flex; 
+      gap: 8px; 
+      flex-wrap: wrap; 
+    }
+
+    @media (max-width: 768px) {
+      .admin-stats { grid-template-columns: repeat(2, 1fr); }
+      .admin-tabs { padding: 6px; gap: 6px; }
+      .tab-btn { 
+        min-width: 0; 
+        padding: 10px 12px; 
+        font-size: 0.78rem; 
+        flex: 1 1 48%; 
+      }
+      .admin-table th, .admin-table td { 
+        padding: 12px 10px; 
+        font-size: 0.8rem; 
+      }
+      .admin-table { min-width: 520px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app-root"></div>
+
+<script type="module">
+import { requireAuth, getLayoutHTML, toast, openModal, closeModal, timeAgo, logout } from '../js/app.js?v=76';
+import { db } from '../js/firebase-config.js';
+import { 
+  collection, addDoc, getDocs, getDoc, doc, updateDoc, deleteDoc, 
+  query, orderBy, where, limit, serverTimestamp 
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+let currentUser, currentUserData;
+
+requireAuth(async (user, userData) => {
+  currentUser = user;
+  currentUserData = userData;
+  if (userData.role !== 'admin') {
+    window.location.href = 'dashboard.html';
+    return;
+  }
+  document.getElementById('app-root').innerHTML = getLayoutHTML('Admin Dashboard', getPageHTML(), 'admin');
+  initPage();
+});
+
+function getPageHTML() {
+  return `
+  <div class="page-content">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Admin Dashboard</h1>
+        <p class="page-subtitle">Manage users, content, and platform activity</p>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="admin-stats" id="admin-stats">
+      <div class="stat-card"><div class="stat-number" id="total-users">—</div><div class="stat-label">Total Users</div></div>
+      <div class="stat-card"><div class="stat-number" id="pending-users">—</div><div class="stat-label">Pending Approval</div></div>
+      <div class="stat-card"><div class="stat-number" id="total-posts">—</div><div class="stat-label">Total Posts</div></div>
+      <div class="stat-card"><div class="stat-number" id="total-resources">—</div><div class="stat-label">Resources</div></div>
+      <div class="stat-card"><div class="stat-number" id="total-doubts">—</div><div class="stat-label">Doubts</div></div>
+      <div class="stat-card"><div class="stat-number" id="total-tests">—</div><div class="stat-label">Tests Created</div></div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="admin-tabs" id="admin-tabs">
+      <button class="tab-btn active" onclick="switchAdminTab('pending',this)">⏳ Pending Users</button>
+      <button class="tab-btn" onclick="switchAdminTab('users',this)">👥 All Users</button>
+      <button class="tab-btn" onclick="switchAdminTab('posts',this)">💬 Posts</button>
+      <button class="tab-btn" onclick="switchAdminTab('doubts',this)">❓ Doubts</button>
+      <button class="tab-btn" onclick="switchAdminTab('resources',this)">📚 Resources</button>
+      <button class="tab-btn" onclick="switchAdminTab('ids',this)">🪪 Registered IDs</button>
+      <button class="tab-btn" onclick="switchAdminTab('logs',this)">📋 Logs</button>
+      <button class="tab-btn" onclick="switchAdminTab('tips',this)">💡 Student Tips</button>
+    </div>
+
+    <div id="admin-content"><div class="loading-spinner">Loading...</div></div>
+  </div>
+
+  <!-- Add Registered ID Modal -->
+  <div class="modal-overlay" id="addIdModal">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-header"><h2>Add Registered IDs</h2><button class="modal-close" onclick="closeModal('addIdModal')">✕</button></div>
+      <div class="modal-body">
+        <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem">Add student/faculty IDs (one per line).</p>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-input" id="id-type">
+            <option value="student">Student ID</option>
+            <option value="faculty">Faculty ID</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">IDs (one per line)</label>
+          <textarea class="form-input" id="id-list" rows="8" placeholder="21A81A0501\n21A81A0502"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('addIdModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="addRegisteredIds()">Add IDs</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Detail Modal -->
+  <div class="modal-overlay" id="userDetailModal">
+    <div class="modal" style="max-width:520px">
+      <div class="modal-header"><h2>User Details</h2><button class="modal-close" onclick="closeModal('userDetailModal')">✕</button></div>
+      <div class="modal-body" id="user-detail-body"></div>
+      <div class="modal-footer" id="user-detail-footer"></div>
+    </div>
+  </div>
+  `;
+}
+
+function initPage() {
+  window.switchAdminTab = switchAdminTab;
+  window.approveUser = approveUser;
+  window.rejectUser = rejectUser;
+  window.banUser = banUser;
+  window.unbanUser = unbanUser;
+  window.changeRole = changeRole;
+  window.deletePost = deleteAdminPost;
+  window.deleteDoubt = deleteAdminDoubt;
+  window.deleteResource = deleteAdminResource;
+  window.addRegisteredIds = addRegisteredIds;
+  window.deleteRegisteredId = deleteRegisteredId;
+  window.viewUser = viewUser;
+  window.logAction = logAction;
+  window.approveTip = approveTip;
+  window.rejectTip = rejectTip;
+  window.openModal = openModal;
+  window._logout = logout;
+  window.closeModal = closeModal;
+
+  loadAdminStats();
+  switchAdminTab('pending', document.querySelector('.tab-btn.active'));
+}
+
+async function loadAdminStats() {
+  try {
+    const [users, posts, resources, doubts, tests, pending] = await Promise.all([
+      getDocs(collection(db, 'users')),
+      getDocs(collection(db, 'posts')),
+      getDocs(collection(db, 'resources')),
+      getDocs(collection(db, 'doubts')),
+      getDocs(collection(db, 'tests')),
+      getDocs(query(collection(db, 'users'), where('approved','==',false))),
+    ]);
+    document.getElementById('total-users').textContent = users.size;
+    document.getElementById('pending-users').textContent = pending.size;
+    document.getElementById('total-posts').textContent = posts.size;
+    document.getElementById('total-resources').textContent = resources.size;
+    document.getElementById('total-doubts').textContent = doubts.size;
+    document.getElementById('total-tests').textContent = tests.size;
+  } catch(e) { console.error(e); }
+}
+
+async function switchAdminTab(tab, el) {
+  document.querySelectorAll('#admin-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const content = document.getElementById('admin-content');
+  content.innerHTML = '<div class="loading-spinner">Loading...</div>';
+
+  if (tab === 'pending') await loadPendingUsers(content);
+  else if (tab === 'users') await loadAllUsers(content);
+  else if (tab === 'posts') await loadAllPosts(content);
+  else if (tab === 'doubts') await loadAllDoubts(content);
+  else if (tab === 'resources') await loadAllResources(content);
+  else if (tab === 'ids') await loadRegisteredIds(content);
+  else if (tab === 'logs') await loadLogs(content);
+  else if (tab === 'tips') await loadTips(content);
+}
+
+// FIXED: Safe Student Tips Loading (No Index Error)
+async function loadTips(content) {
+  try {
+    const snap = await getDocs(query(collection(db, 'notifications'), orderBy('createdAt', 'desc'), limit(50)));
+    const pendingTips = snap.docs.filter(d => d.data().approved === false);
+
+    if (pendingTips.length === 0) {
+      content.innerHTML = `<div class="empty-state"><div class="empty-icon">💡</div><h3>No pending tips</h3><p>All tips have been reviewed.</p></div>`;
+      return;
+    }
+
+    content.innerHTML = `
+      <div style="margin-bottom:12px;color:var(--text-muted);font-size:0.85rem">
+        ${pendingTips.length} student tip(s) awaiting review
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Title</th><th>Type</th><th>Submitted By</th><th>Date</th><th>Actions</th></tr></thead>
+          <tbody>
+            ${pendingTips.map(d => {
+              const t = d.data();
+              return `<tr>
+                <td><strong>${t.title || 'Untitled Tip'}</strong></td>
+                <td>${t.type || 'general'}</td>
+                <td>${t.authorName || 'Student'}</td>
+                <td>${t.createdAt?.toDate ? t.createdAt.toDate().toLocaleDateString() : 'N/A'}</td>
+                <td class="action-cell">
+                  <button class="btn btn-sm btn-success" onclick="approveTip('${d.id}')">✅ Approve</button>
+                  <button class="btn btn-sm btn-danger" onclick="rejectTip('${d.id}')">❌ Reject</button>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch(e) {
+    console.error("Tips load error:", e);
+    content.innerHTML = `<div style="padding:30px;color:var(--accent-danger);text-align:center">
+      Failed to load tips.<br>Check console for details.
+    </div>`;
+  }
+}
+
+async function approveTip(id) {
+  try {
+    await updateDoc(doc(db, 'notifications', id), { approved: true });
+    toast('Tip approved successfully!', 'success');
+    switchAdminTab('tips', document.querySelector('.tab-btn.active'));
+  } catch(e) { toast('Failed to approve', 'error'); }
+}
+
+async function rejectTip(id) {
+  if (!confirm('Reject and delete this tip?')) return;
+  try {
+    await deleteDoc(doc(db, 'notifications', id));
+    toast('Tip rejected', 'success');
+    switchAdminTab('tips', document.querySelector('.tab-btn.active'));
+  } catch(e) { toast('Failed to reject', 'error'); }
+}
+
+// ==================== ORIGINAL FUNCTIONS (Kept Fully) ====================
+async function loadPendingUsers(content) {
+  try {
+    const snap = await getDocs(query(collection(db, 'users'), where('approved','==',false)));
+    if (snap.empty) {
+      content.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><h3>All clear!</h3><p>No users pending approval</p></div>`;
+      return;
+    }
+    content.innerHTML = `
+      <div class="admin-table-header">
+        <span>${snap.size} user(s) pending approval</span>
+        <button class="btn btn-sm btn-primary" onclick="approveAll()">✅ Approve All</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>ID</th><th>Dept</th><th>Year</th><th>Registered</th><th>Actions</th></tr></thead>
+          <tbody>${snap.docs.map(d => {
+            const u = { id: d.id, ...d.data() };
+            return `<tr>
+              <td><strong>${u.name||'N/A'}</strong></td>
+              <td>${u.email}</td>
+              <td><span class="role-chip role-${u.role}">${u.role}</span></td>
+              <td><code>${u.studentId||u.facultyId||'N/A'}</code></td>
+              <td>${u.dept||'N/A'}</td>
+              <td>${u.year?u.year+'Y':'N/A'}</td>
+              <td>${u.createdAt?.toDate ? u.createdAt.toDate().toLocaleDateString() : 'N/A'}</td>
+              <td class="action-cell">
+                <button class="btn btn-sm btn-success" onclick="approveUser('${u.id}','${u.name||u.email}')">✅ Approve</button>
+                <button class="btn btn-sm btn-danger" onclick="rejectUser('${u.id}','${u.name||u.email}')">❌ Reject</button>
+              </td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>`;
+    window.approveAll = async () => {
+      if (!confirm('Approve ALL pending users?')) return;
+      for (const d of snap.docs) await updateDoc(doc(db, 'users', d.id), { approved: true });
+      toast(`${snap.size} users approved`, 'success');
+      await logAction('Bulk approve', `Approved all ${snap.size} pending users`);
+      loadAdminStats();
+      switchAdminTab('pending', document.querySelector('.tab-btn.active'));
+    };
+  } catch(e) { content.innerHTML = '<p>Failed to load</p>'; }
+}
+
+async function loadAllUsers(content) {
+  try {
+    const snap = await getDocs(query(collection(db, 'users'), orderBy('createdAt', 'desc')));
+    const users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    content.innerHTML = `
+      <div class="admin-search-bar">
+        <input type="text" id="user-search" placeholder="Search by name, email, ID..." class="form-input" oninput="filterUserTable(this.value)" style="max-width:400px"/>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table" id="users-table">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>ID</th><th>Dept</th><th>Status</th><th>Rep</th><th>Actions</th></tr></thead>
+          <tbody id="users-tbody">${users.map(u => userRow(u)).join('')}</tbody>
+        </table>
+      </div>`;
+    window.filterUserTable = (v) => {
+      const rows = document.querySelectorAll('#users-tbody tr');
+      rows.forEach(row => row.style.display = row.textContent.toLowerCase().includes(v.toLowerCase()) ? '' : 'none');
+    };
+  } catch(e) { content.innerHTML = '<p>Failed to load</p>'; }
+}
+
+function userRow(u) {
+  return `<tr id="urow-${u.id}">
+    <td><strong>${u.name||'N/A'}</strong></td>
+    <td>${u.email}</td>
+    <td>
+      <select class="role-select" onchange="changeRole('${u.id}',this.value,'${u.name||u.email}')">
+        <option value="student" ${u.role==='student'?'selected':''}>student</option>
+        <option value="faculty" ${u.role==='faculty'?'selected':''}>faculty</option>
+        <option value="admin" ${u.role==='admin'?'selected':''}>admin</option>
+      </select>
+    </td>
+    <td><code>${u.studentId||u.facultyId||'N/A'}</code></td>
+    <td>${u.dept||'N/A'}</td>
+    <td><span class="status-dot ${u.approved===false?'pending':u.banned?'banned':'active'}">${u.approved===false?'Pending':u.banned?'Banned':'Active'}</span></td>
+    <td>${u.reputation||0}</td>
+    <td class="action-cell">
+      <button class="btn btn-sm btn-secondary" onclick="viewUser('${u.id}')">View</button>
+      ${u.banned ? `<button class="btn btn-sm btn-success" onclick="unbanUser('${u.id}','${u.name||u.email}')">Unban</button>` : `<button class="btn btn-sm btn-danger" onclick="banUser('${u.id}','${u.name||u.email}')">Ban</button>`}
+      ${u.approved===false ? `<button class="btn btn-sm btn-success" onclick="approveUser('${u.id}','${u.name||u.email}')">Approve</button>` : ''}
+    </td>
+  </tr>`;
+}
+
+async function loadAllPosts(content) {
+  try {
+    const snap = await getDocs(query(collection(db, 'posts'), orderBy('createdAt','desc'), limit(50)));
+    if (snap.empty) { content.innerHTML = emptyState('💬','No posts yet'); return; }
+    content.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Title</th><th>Author</th><th>Community</th><th>Likes</th><th>Comments</th><th>Date</th><th>Actions</th></tr></thead>
+      <tbody>${snap.docs.map(d => {
+        const p = { id: d.id, ...d.data() };
+        return `<tr><td>${p.title?.substring(0,50)||'(untitled)'}</td><td>${p.authorName||'Unknown'}</td><td>${p.communityName||'N/A'}</td><td>${p.likes?.length||0}</td><td>${p.commentCount||0}</td><td>${p.createdAt?.toDate ? p.createdAt.toDate().toLocaleDateString() : 'N/A'}</td>
+          <td class="action-cell"><button class="btn btn-sm btn-danger" onclick="deletePost('${p.id}')">Delete</button></td></tr>`;
+      }).join('')}</tbody></table></div>`;
+  } catch(e) { content.innerHTML = '<p>Failed to load</p>'; }
+}
+
+async function loadAllDoubts(content) {
+  try {
+    const snap = await getDocs(query(collection(db, 'doubts'), orderBy('createdAt','desc'), limit(50)));
+    if (snap.empty) { content.innerHTML = emptyState('❓','No doubts yet'); return; }
+    content.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Title</th><th>Author</th><th>Subject</th><th>Status</th><th>Votes</th><th>Date</th><th>Actions</th></tr></thead>
+      <tbody>${snap.docs.map(d => {
+        const q = { id: d.id, ...d.data() };
+        return `<tr><td>${q.title?.substring(0,50)||'N/A'}</td><td>${q.authorName||'Unknown'}</td><td>${q.subject||'N/A'}</td><td><span class="status-dot ${q.status==='answered'?'active':'pending'}">${q.status||'open'}</span></td><td>${q.votes||0}</td><td>${q.createdAt?.toDate ? q.createdAt.toDate().toLocaleDateString() : 'N/A'}</td>
+          <td class="action-cell"><button class="btn btn-sm btn-danger" onclick="deleteDoubt('${q.id}')">Delete</button></td></tr>`;
+      }).join('')}</tbody></table></div>`;
+  } catch(e) { content.innerHTML = '<p>Failed to load</p>'; }
+}
+
+async function loadAllResources(content) {
+  try {
+    const snap = await getDocs(query(collection(db, 'resources'), orderBy('createdAt','desc'), limit(50)));
+    if (snap.empty) { content.innerHTML = emptyState('📚','No resources yet'); return; }
+    content.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Title</th><th>Author</th><th>Type</th><th>Subject</th><th>Downloads</th><th>Date</th><th>Actions</th></tr></thead>
+      <tbody>${snap.docs.map(d => {
+        const r = { id: d.id, ...d.data() };
+        return `<tr><td>${r.title?.substring(0,40)||'N/A'}</td><td>${r.authorName||'Unknown'}</td><td>${r.type||'N/A'}</td><td>${r.subject||'N/A'}</td><td>${r.downloads||0}</td><td>${r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString() : 'N/A'}</td>
+          <td class="action-cell"><button class="btn btn-sm btn-danger" onclick="deleteResource('${r.id}')">Delete</button></td></tr>`;
+      }).join('')}</tbody></table></div>`;
+  } catch(e) { content.innerHTML = '<p>Failed to load</p>'; }
+}
+
+async function loadRegisteredIds(content) {
+  try {
+    const snap = await getDocs(collection(db, 'registeredIds'));
+    content.innerHTML = `
+      <div class="admin-table-header">
+        <span>${snap.size} registered ID(s)</span>
+        <button class="btn btn-sm btn-primary" onclick="openModal('addIdModal')">+ Add IDs</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>ID</th><th>Type</th><th>Used</th><th>Used By</th><th>Added On</th><th>Actions</th></tr></thead>
+          <tbody>${snap.docs.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No IDs added yet</td></tr>' : snap.docs.map(d => {
+            const data = d.data();
+            return `<tr>
+              <td><code>${data.id || d.id}</code></td>
+              <td><span class="role-chip role-${data.type||'student'}">${data.type||'student'}</span></td>
+              <td>${data.used ? '✅ Used' : '⭕ Available'}</td>
+              <td>${data.usedBy || '—'}</td>
+              <td>${data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'N/A'}</td>
+              <td class="action-cell"><button class="btn btn-sm btn-danger" onclick="deleteRegisteredId('${d.id}')">Remove</button></td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>`;
+  } catch(e) { content.innerHTML = '<p>Failed to load</p>'; }
+}
+
+async function loadLogs(content) {
+  try {
+    const snap = await getDocs(query(collection(db, 'adminLogs'), orderBy('createdAt','desc'), limit(100)));
+    if (snap.empty) { content.innerHTML = emptyState('📋','No logs yet'); return; }
+    content.innerHTML = `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Action</th><th>Details</th><th>Admin</th><th>Date & Time</th></tr></thead>
+      <tbody>${snap.docs.map(d => {
+        const l = d.data();
+        return `<tr><td><strong>${l.action}</strong></td><td>${l.details||'—'}</td><td>${l.adminName||'Admin'}</td><td>${l.createdAt?.toDate ? l.createdAt.toDate().toLocaleString() : 'N/A'}</td></tr>`;
+      }).join('')}</tbody></table></div>`;
+  } catch(e) { content.innerHTML = '<p>Failed to load</p>'; }
+}
+
+// Actions
+async function approveUser(uid, name) {
+  if (!confirm(`Approve user "${name}"?`)) return;
+  try {
+    await updateDoc(doc(db, 'users', uid), { approved: true });
+    toast(`${name} approved!`, 'success');
+    await logAction('Approve user', `Approved: ${name} (${uid})`);
+    loadAdminStats();
+    const activeTab = document.querySelector('#admin-tabs .tab-btn.active');
+    switchAdminTab(activeTab?.textContent.includes('Pending') ? 'pending' : 'users', activeTab);
+  } catch(e) { toast('Failed', 'error'); }
+}
+
+async function rejectUser(uid, name) {
+  if (!confirm(`Reject and DELETE user "${name}"?`)) return;
+  try {
+    await deleteDoc(doc(db, 'users', uid));
+    toast(`${name} rejected`, 'success');
+    await logAction('Reject user', `Rejected/deleted: ${name} (${uid})`);
+    loadAdminStats();
+    switchAdminTab('pending', document.querySelector('#admin-tabs .tab-btn'));
+  } catch(e) { toast('Failed', 'error'); }
+}
+
+async function banUser(uid, name) {
+  const reason = prompt(`Reason for banning "${name}":`);
+  if (!reason) return;
+  try {
+    await updateDoc(doc(db, 'users', uid), { banned: true, banReason: reason });
+    toast(`${name} banned`, 'success');
+    await logAction('Ban user', `Banned: ${name}. Reason: ${reason}`);
+  } catch(e) { toast('Failed', 'error'); }
+}
+
+async function unbanUser(uid, name) {
+  if (!confirm(`Unban "${name}"?`)) return;
+  try {
+    await updateDoc(doc(db, 'users', uid), { banned: false, banReason: null });
+    toast(`${name} unbanned`, 'success');
+    await logAction('Unban user', `Unbanned: ${name}`);
+  } catch(e) { toast('Failed', 'error'); }
+}
+
+async function changeRole(uid, newRole, name) {
+  if (!confirm(`Change ${name}'s role to "${newRole}"?`)) return;
+  try {
+    await updateDoc(doc(db, 'users', uid), { role: newRole });
+    toast(`Role updated`, 'success');
+    await logAction('Change role', `${name} → ${newRole}`);
+    loadAllUsers(document.getElementById('admin-content'));
+  } catch(e) { toast('Failed', 'error'); }
+}
+
+async function viewUser(uid) {
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    if (!snap.exists()) return;
+    const u = snap.data();
+    document.getElementById('user-detail-body').innerHTML = `
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem">
+        <div style="width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;color:white">${(u.name||'U')[0]}</div>
+        <div><h3>${u.name||'N/A'}</h3><p style="color:var(--text-muted)">${u.email}</p></div>
+      </div>
+      <table class="admin-table" style="font-size:0.85rem">
+        ${[['Role',u.role],['Dept',u.dept||'N/A'],['Year',u.year?u.year+'Y':'N/A'],['Student ID',u.studentId||u.facultyId||'N/A'],['Reputation',u.reputation||0],['Status',u.approved===false?'Pending':u.banned?'Banned':'Active'],['Bio',u.bio||'—'],['GitHub',u.github||'—'],['LinkedIn',u.linkedin||'—'],['Joined',u.createdAt?.toDate ? u.createdAt.toDate().toLocaleString() : 'N/A']].map(([k,v])=>`<tr><td style="color:var(--text-muted);width:40%">${k}</td><td><strong>${v}</strong></td></tr>`).join('')}
+      </table>`;
+    document.getElementById('user-detail-footer').innerHTML = `<button class="btn btn-secondary" onclick="closeModal('userDetailModal')">Close</button>`;
+    openModal('userDetailModal');
+  } catch(e) { toast('Failed to load user', 'error'); }
+}
+
+async function deleteAdminPost(id) {
+  if (!confirm('Delete this post?')) return;
+  try {
+    await deleteDoc(doc(db, 'posts', id));
+    toast('Post deleted', 'success');
+    await logAction('Delete post', `Post ID: ${id}`);
+    switchAdminTab('posts', document.querySelector('#admin-tabs .tab-btn.active'));
+  } catch(e) { toast('Failed', 'error'); }
+}
+
+async function deleteAdminDoubt(id) {
+  if (!confirm('Delete this doubt?')) return;
+  try {
+    await deleteDoc(doc(db, 'doubts', id));
+    toast('Doubt deleted', 'success');
+    await logAction('Delete doubt', `Doubt ID: ${id}`);
+    switchAdminTab('doubts', document.querySelector('#admin-tabs .tab-btn.active'));
+  } catch(e) { toast('Failed', 'error'); }
+}
+
+async function deleteAdminResource(id) {
+  if (!confirm('Delete this resource?')) return;
+  try {
+    await deleteDoc(doc(db, 'resources', id));
+    toast('Resource deleted', 'success');
+    await logAction('Delete resource', `Resource ID: ${id}`);
+    switchAdminTab('resources', document.querySelector('#admin-tabs .tab-btn.active'));
+  } catch(e) { toast('Failed', 'error'); }
+}
+
+async function addRegisteredIds() {
+  const type = document.getElementById('id-type').value;
+  const raw = document.getElementById('id-list').value.trim();
+  if (!raw) { toast('Enter at least one ID', 'error'); return; }
+  const ids = [...new Set(raw.split('\n').map(s=>s.trim()).filter(Boolean))];
+  try {
+    let added = 0;
+    for (const id of ids) {
+      await addDoc(collection(db, 'registeredIds'), { id, type, used: false, createdAt: serverTimestamp(), addedBy: currentUser.uid });
+      added++;
+    }
+    toast(`Added ${added} ID(s)`, 'success');
+    await logAction('Add registered IDs', `Added ${added} ${type} IDs`);
+    closeModal('addIdModal');
+    document.getElementById('id-list').value = '';
+    switchAdminTab('ids', document.querySelector('#admin-tabs .tab-btn.active'));
+  } catch(e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function deleteRegisteredId(docId) {
+  if (!confirm('Remove this registered ID?')) return;
+  try {
+    await deleteDoc(doc(db, 'registeredIds', docId));
+    toast('ID removed', 'success');
+    switchAdminTab('ids', document.querySelector('#admin-tabs .tab-btn.active'));
+  } catch(e) { toast('Failed', 'error'); }
+}
+
+async function logAction(action, details) {
+  try {
+    await addDoc(collection(db, 'adminLogs'), {
+      action, details,
+      adminId: currentUser.uid,
+      adminName: currentUserData.name || currentUserData.email,
+      createdAt: serverTimestamp()
+    });
+  } catch(e) {}
+}
+
+function emptyState(icon, msg) {
+  return `<div class="empty-state"><div class="empty-icon">${icon}</div><h3>${msg}</h3></div>`;
+}
+</script>
+</body>
+</html>

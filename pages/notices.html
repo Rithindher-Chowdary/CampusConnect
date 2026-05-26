@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Notices — CampusConnect</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+<div id="app-root"></div>
+
+<script type="module">
+import { requireAuth, getLayoutHTML, getSidebarHTML, toast, openModal, closeModal, timeAgo, logout, pushNotification, db, collection, addDoc, getDocs, getDoc, doc, updateDoc, deleteDoc, query, orderBy, where, serverTimestamp, arrayUnion, arrayRemove, uploadAttachment } from '../js/app.js?v=76';
+
+let currentUser, currentUserData;
+let allNotices = [];
+let currentFilter = 'all';
+
+requireAuth(async (user, userData) => {
+  currentUser = user;
+  currentUserData = userData;
+  document.getElementById('app-root').innerHTML = getLayoutHTML('Notices', getPageHTML(userData.role), userData.role);
+  document.getElementById('sidebar-nav').innerHTML = getSidebarHTML(userData.role);
+  initPage();
+});
+
+function getPageHTML(role) {
+  const canPost = role === 'faculty' || role === 'admin';
+  return `
+  <div class="page-content">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Notice Board</h1>
+      <p class="page-subtitle">Stay updated with internships, hackathons, placements & announcements</p>
+    </div>
+    <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+      ${canPost ? `<button class="btn btn-primary desktop-post-btn" onclick="openModal('postModal')">✏️ Post Notice</button>` : ''}
+      ${canPost ? `<button class="btn btn-secondary desktop-post-btn" onclick="openModal('pushModal')" style="background:rgba(0,217,163,0.1);border-color:var(--accent3);color:var(--accent3)">🔔 Push Notification</button>` : ''}
+      ${role === 'student' ? `<button class="btn btn-secondary desktop-post-btn" onclick="openModal('tipModal')" style="background:rgba(0,217,163,0.1);border-color:var(--accent3);color:var(--accent3)">💡 Share a Tip</button>` : ''}
+    </div>
+    ${role === 'student' ? `<button class="fab-tip" onclick="openModal('tipModal')" title="Share a Tip">💡</button>` : ''}
+    ${canPost ? `<button class="fab-tip" onclick="openModal('postModal')" title="Post Notice" style="background:var(--accent)">✏️</button>` : ''}
+  </div>
+
+  <div class="notices-layout">
+    <div class="notices-main">
+      <div id="pinned-notices"></div>
+      <div id="notices-list"><div class="loading-spinner">Loading notices...</div></div>
+    </div>
+  </div>
+  </div>
+
+  <!-- Post Notice Modal -->
+  <div class="modal-overlay" id="postModal">
+    <div class="modal" style="max-width:600px">
+      <div class="modal-header">
+        <h2>Post New Notice</h2>
+        <button class="modal-close" onclick="closeModal('postModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Title *</label>
+          <input type="text" class="form-input" id="n-title" placeholder="e.g., TCS Recruitment Drive 2025"/>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Type *</label>
+            <select class="form-input" id="n-type">
+              <option value="">Select type...</option>
+              <option value="internship">💼 Internship</option>
+              <option value="hackathon">🏆 Hackathon</option>
+              <option value="placement">🎓 Placement</option>
+              <option value="exam">📝 Exam</option>
+              <option value="event">🎉 Event</option>
+              <option value="general">📋 General</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Priority</label>
+            <select class="form-input" id="n-priority">
+              <option value="normal">🟢 Normal</option>
+              <option value="high">🟠 High</option>
+              <option value="urgent">🔴 Urgent</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Content *</label>
+          <textarea class="form-input" id="n-content" rows="6" placeholder="Full notice details, eligibility, how to apply, etc..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Deadline (optional)</label>
+            <input type="datetime-local" class="form-input" id="n-deadline"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Target Audience</label>
+            <select class="form-input" id="n-target">
+              <option value="all">All Students</option>
+              <option value="1">1st Year</option>
+              <option value="2">2nd Year</option>
+              <option value="3">3rd Year</option>
+              <option value="4">4th Year</option>
+              <option value="final">Final Year (3rd + 4th)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">External Link (optional)</label>
+          <input type="url" class="form-input" id="n-link" placeholder="https://apply.company.com"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Attach Image / PDF <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+          <div id="notice-attach-zone" style="border:1.5px dashed var(--border);border-radius:var(--radius);padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;background:var(--bg-input);transition:var(--transition)" onclick="document.getElementById('notice-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleNoticeFileDrop(event)">
+            <span style="font-size:1.3rem">📎</span>
+            <div>
+              <div style="font-size:0.82rem;font-weight:600;color:var(--text-secondary)">Click or drag to attach</div>
+              <div style="font-size:0.72rem;color:var(--text-muted)">Images (JPG, PNG) or PDF — max 10MB</div>
+            </div>
+          </div>
+          <input type="file" id="notice-file-input" style="display:none" accept="image/jpeg,image/png,image/gif,application/pdf" onchange="handleNoticeFileSelect(this)"/>
+          <div id="notice-file-chosen" style="display:none;margin-top:8px;font-size:0.8rem;color:var(--accent);font-weight:600;display:flex;align-items:center;gap:6px"></div>
+          <div id="notice-upload-progress-wrap" style="display:none;margin-top:8px">
+            <div style="height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden">
+              <div id="notice-upload-prog" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s"></div>
+            </div>
+            <div id="notice-upload-prog-text" style="font-size:0.72rem;color:var(--text-muted);margin-top:4px">Uploading...</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="display:flex;align-items:center;gap:0.5rem">
+            <input type="checkbox" id="n-pin" style="width:auto"/>
+            📌 Pin this notice (will appear at top)
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('postModal')">Cancel</button>
+        <button class="btn btn-primary" id="notice-submit-btn" onclick="submitNotice()">📢 Post Notice</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Push Notification Modal -->
+  <div class="modal-overlay" id="pushModal">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-header">
+        <h2>🔔 Push Notification</h2>
+        <button class="modal-close" onclick="closeModal('pushModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem">This will instantly appear in the notification bell for ALL users.</p>
+        <div class="form-group">
+          <label class="form-label">Title *</label>
+          <input type="text" class="form-input" id="push-title" placeholder="e.g., Exam schedule released!"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-input" id="push-type">
+            <option value="general">📢 General</option>
+            <option value="exam">📝 Exam</option>
+            <option value="internship">💼 Internship</option>
+            <option value="hackathon">🏆 Hackathon</option>
+            <option value="placement">🎓 Placement</option>
+            <option value="event">🎉 Event</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Message (optional)</label>
+          <textarea class="form-input" id="push-content" rows="3" placeholder="Additional details..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('pushModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitPush()" style="background:var(--accent3);border-color:var(--accent3)">🔔 Push Now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Student Tip Modal -->
+  <div class="modal-overlay" id="tipModal">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-header">
+        <h2>💡 Share a Notification Tip</h2>
+        <button class="modal-close" onclick="closeModal('tipModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem">
+          Know something useful? Share it! Admin will review and publish it to everyone.
+        </p>
+        <div class="form-group">
+          <label class="form-label">Title *</label>
+          <input type="text" class="form-input" id="tip-title" placeholder="e.g., Google Internship applications are open"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-input" id="tip-type">
+            <option value="general">📢 General</option>
+            <option value="internship">💼 Internship</option>
+            <option value="hackathon">🏆 Hackathon</option>
+            <option value="placement">🎓 Placement</option>
+            <option value="exam">📝 Exam</option>
+            <option value="event">🎉 Event</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Details</label>
+          <textarea class="form-input" id="tip-content" rows="4" placeholder="Add more details, links, deadlines..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Source Link (optional)</label>
+          <input type="url" class="form-input" id="tip-link" placeholder="https://..."/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Attach Image / PDF <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+          <div id="tip-attach-zone" style="border:1.5px dashed var(--border);border-radius:var(--radius);padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;background:var(--bg-input);transition:var(--transition)" onclick="document.getElementById('tip-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent3)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleTipFileDrop(event)">
+            <span style="font-size:1.3rem">📎</span>
+            <div>
+              <div style="font-size:0.82rem;font-weight:600;color:var(--text-secondary)">Click or drag to attach</div>
+              <div style="font-size:0.72rem;color:var(--text-muted)">Images (JPG, PNG) or PDF — max 10MB</div>
+            </div>
+          </div>
+          <input type="file" id="tip-file-input" style="display:none" accept="image/jpeg,image/png,image/gif,application/pdf" onchange="handleTipFileSelect(this)"/>
+          <div id="tip-file-chosen" style="display:none;margin-top:8px;font-size:0.8rem;color:var(--accent3);font-weight:600;display:flex;align-items:center;gap:6px"></div>
+          <div id="tip-upload-progress-wrap" style="display:none;margin-top:8px">
+            <div style="height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden">
+              <div id="tip-upload-prog" style="height:100%;background:var(--accent3);width:0%;transition:width 0.2s"></div>
+            </div>
+            <div id="tip-upload-prog-text" style="font-size:0.72rem;color:var(--text-muted);margin-top:4px">Uploading...</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('tipModal')">Cancel</button>
+        <button class="btn btn-primary" id="tip-submit-btn" onclick="submitTip()" style="background:var(--accent3);border-color:var(--accent3)">💡 Submit for Review</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notice Detail Modal -->
+  <div class="modal-overlay" id="detailModal">
+    <div class="modal" style="max-width:640px">
+      <div class="modal-header">
+        <h2 id="detail-title">Notice</h2>
+        <button class="modal-close" onclick="closeModal('detailModal')">✕</button>
+      </div>
+      <div class="modal-body" id="detail-body"></div>
+      <div class="modal-footer" id="detail-footer"></div>
+    </div>
+  </div>
+  `;
+}
+
+let priorityFilter = 'all';
+
+function initPage() {
+  window.openModal = openModal;
+  window._logout = logout;
+  window.closeModal = closeModal;
+  window.filterNotices = (type, el) => {
+    currentFilter = type;
+    document.querySelectorAll('#notice-type-chips .notice-chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    renderNotices();
+  };
+  window.filterByPriority = (val) => { priorityFilter = val; renderNotices(); };
+  window.filterPriorityBtn = (val, el) => {
+    priorityFilter = val;
+    document.querySelectorAll('#priority-chips .chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    renderNotices();
+  };
+  window.submitNotice = submitNotice;
+  window.openDetail = openDetail;
+  window.deleteNotice = deleteNotice;
+  window.bookmarkNotice = bookmarkNotice;
+  window.submitPush = submitPush;
+  window.submitTip = submitTip;
+
+  loadNotices();
+}
+
+// ==================== FIXED: Load Notices + Approved Tips ====================
+async function loadNotices() {
+  try {
+    // Load normal notices
+    const noticesSnap = await getDocs(query(collection(db, 'notices'), orderBy('createdAt', 'desc')));
+    allNotices = noticesSnap.docs.map(d => ({ 
+      id: d.id, 
+      ...d.data(), 
+      source: 'notices' 
+    }));
+
+    // Load approved tips and merge them
+    const tipsSnap = await getDocs(query(collection(db, 'notifications'), 
+      where('approved', '==', true), 
+      orderBy('createdAt', 'desc')));
+
+    tipsSnap.docs.forEach(d => {
+      const tip = d.data();
+      allNotices.push({
+        id: d.id,
+        title: tip.title,
+        type: tip.type || 'general',
+        content: tip.content || '',
+        authorName: tip.authorName || 'Admin',
+        createdAt: tip.createdAt,
+        pinned: false,
+        source: 'tip',
+        attachUrl: tip.attachUrl,
+        attachName: tip.attachName,
+        attachType: tip.attachType
+      });
+    });
+
+    // Sort by date (newest first)
+    allNotices.sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() || 0;
+      const tb = b.createdAt?.toMillis?.() || 0;
+      return tb - ta;
+    });
+
+    renderNotices();
+  } catch(e) {
+    console.error('loadNotices error:', e);
+    const el = document.getElementById('notices-list');
+    if (el) el.innerHTML = '<p style="color:var(--accent-danger);padding:1rem">Error loading notices. Check console.</p>';
+  }
+}
+
+function renderNotices() {
+  let filtered = [...allNotices];
+  if (currentFilter !== 'all') filtered = filtered.filter(n => n.type === currentFilter);
+  if (priorityFilter !== 'all') filtered = filtered.filter(n => n.priority === priorityFilter);
+
+  const pinned = filtered.filter(n => n.pinned);
+  const regular = filtered.filter(n => !n.pinned);
+
+  const pinnedEl = document.getElementById('pinned-notices');
+  if (pinned.length) {
+    pinnedEl.innerHTML = `<div class="pinned-section-label">📌 Pinned</div>` + pinned.map(n => renderNoticeCard(n, true)).join('');
+  } else { 
+    pinnedEl.innerHTML = ''; 
+  }
+
+  const list = document.getElementById('notices-list');
+  if (regular.length === 0 && pinned.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">📢</div><h3>No notices yet</h3><p>Nothing posted in this category</p></div>`;
+    return;
+  }
+  list.innerHTML = regular.map(n => renderNoticeCard(n, false)).join('');
+}
+
+const typeConfig = {
+  internship: { emoji:'💼', color:'#4f8ef7', bg:'rgba(79,142,247,0.15)' },
+  hackathon:  { emoji:'🏆', color:'#7c5cfc', bg:'rgba(124,92,252,0.15)' },
+  placement:  { emoji:'🎓', color:'#00d9a3', bg:'rgba(0,217,163,0.15)' },
+  exam:       { emoji:'📝', color:'#f59e0b', bg:'rgba(245,158,11,0.15)' },
+  event:      { emoji:'🎉', color:'#ec4899', bg:'rgba(236,72,153,0.15)' },
+  general:    { emoji:'📋', color:'#9ca3af', bg:'rgba(156,163,175,0.15)' },
+};
+const priorityConfig = {
+  urgent: { label:'🔴 Urgent', color:'#ef4444', bg:'rgba(239,68,68,0.15)' },
+  high:   { label:'🟠 High',   color:'#f97316', bg:'rgba(249,115,22,0.15)' },
+  normal: { label:'🟢 Normal', color:'#22c55e', bg:'rgba(34,197,94,0.15)' },
+};
+
+function renderNoticeCard(n, isPinned) {
+  const tc = typeConfig[n.type] || typeConfig.general;
+  const pc = priorityConfig[n.priority] || priorityConfig.normal;
+  const deadline = n.deadline ? new Date(n.deadline) : null;
+  const isExpired = deadline && deadline < new Date();
+  const bookmarked = n.bookmarks?.includes(currentUser.uid);
+  const canManage = n.authorId === currentUser.uid || currentUserData.role === 'admin';
+  const isTip = n.source === 'tip';
+
+  return `
+  <div class="notice-card ${isPinned?'pinned':''} ${isExpired?'expired':''}" onclick="openDetail('${n.id}')">
+    <div class="notice-card-left">
+      <div class="notice-type-badge" style="background:${tc.bg};color:${tc.color}">${isTip ? '💡' : tc.emoji} ${isTip ? 'Tip' : n.type}</div>
+    </div>
+    <div class="notice-card-body">
+      <div class="notice-card-top">
+        <h3 class="notice-title">${n.title}</h3>
+        <div class="notice-badges">
+          <span class="priority-badge" style="background:${pc.bg};color:${pc.color}">${pc.label}</span>
+          ${isExpired ? '<span class="expired-badge">Expired</span>' : ''}
+          ${isTip ? '<span class="priority-badge" style="background:rgba(0,217,163,0.15);color:#00d9a3">Student Tip</span>' : ''}
+        </div>
+      </div>
+      <p class="notice-preview">${(n.content||'').substring(0,150)}${n.content?.length>150?'...':''}</p>
+      <div class="notice-card-footer">
+        <div class="notice-meta">
+          <span>👤 ${n.authorName}</span>
+          <span>🕐 ${timeAgo(n.createdAt?.toDate?.())}</span>
+          ${deadline ? `<span>${isExpired?'⌛':'⏰'} ${isExpired?'Expired':'Deadline'}: ${deadline.toLocaleDateString()}</span>` : ''}
+          ${n.target && n.target !== 'all' ? `<span>🎯 ${n.target==='final'?'Final Year':n.target+'st Year'}</span>` : ''}
+        </div>
+        <div class="notice-actions" onclick="event.stopPropagation()">
+          <button class="icon-btn ${bookmarked?'active':''}" title="${bookmarked?'Remove bookmark':'Bookmark'}" onclick="bookmarkNotice('${n.id}')">
+            ${bookmarked?'🔖':'🏷️'}
+          </button>
+          ${n.link ? `<a href="${n.link}" target="_blank" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">Apply →</a>` : ''}
+          ${canManage ? `<button class="btn btn-sm btn-danger" onclick="deleteNotice('${n.id}')">Delete</button>` : ''}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function openDetail(id) {
+  const n = allNotices.find(x => x.id === id);
+  if (!n) return;
+  const tc = typeConfig[n.type] || typeConfig.general;
+  const pc = priorityConfig[n.priority] || priorityConfig.normal;
+  const deadline = n.deadline ? new Date(n.deadline) : null;
+  const isExpired = deadline && deadline < new Date();
+  const canManage = n.authorId === currentUser.uid || currentUserData.role === 'admin';
+  const isTip = n.source === 'tip';
+
+  document.getElementById('detail-title').textContent = n.title;
+  document.getElementById('detail-body').innerHTML = `
+    <div class="notice-detail-header">
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
+        <span class="priority-badge" style="background:${tc.bg};color:${tc.color}">${tc.emoji} ${isTip ? 'Student Tip' : n.type}</span>
+        <span class="priority-badge" style="background:${pc.bg};color:${pc.color}">${pc.label}</span>
+        ${n.pinned ? '<span class="priority-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b">📌 Pinned</span>' : ''}
+        ${isExpired ? '<span class="expired-badge">⌛ Expired</span>' : ''}
+      </div>
+      <div class="notice-detail-meta">
+        <span>👤 Posted by <strong>${n.authorName}</strong></span>
+        <span>🕐 ${timeAgo(n.createdAt?.toDate?.())}</span>
+        ${deadline ? `<span>${isExpired?'⌛ Expired':'⏰ Deadline'}: <strong>${deadline.toLocaleString()}</strong></span>` : ''}
+        ${n.target && n.target !== 'all' ? `<span>🎯 Target: <strong>${n.target==='final'?'Final Year (3rd & 4th)':n.target+'st Year'}</strong></span>` : '<span>🎯 Target: <strong>All Students</strong></span>'}
+      </div>
+    </div>
+    <div class="notice-detail-content">${(n.content||'').replace(/\n/g, '<br/>')}</div>
+    ${n.attachUrl ? `<div style="margin-top:14px">
+      ${n.attachType?.startsWith('image/')
+        ? `<img src="${n.attachUrl}" alt="attachment" style="max-width:100%;max-height:300px;border-radius:var(--radius);border:1px solid var(--border-soft);cursor:pointer" onclick="window.open('${n.attachUrl}','_blank')">`
+        : `<a href="${n.attachUrl}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;background:var(--bg-card);border:1px solid var(--border-soft);border-radius:var(--radius);font-size:0.82rem;color:var(--accent);text-decoration:none;font-weight:600"><span>📄</span>${n.attachName||'View Attachment'}</a>`
+      }
+    </div>` : ''}
+    ${n.link ? `<div class="notice-link-box"><a href="${n.link}" target="_blank" class="btn btn-primary" style="width:100%">🔗 Apply / Visit Link →</a></div>` : ''}
+  `;
+  document.getElementById('detail-footer').innerHTML = `
+    ${canManage ? `<button class="btn btn-danger" onclick="deleteNotice('${n.id}');closeModal('detailModal')">🗑 Delete</button>` : ''}
+    <div style="flex:1"></div>
+    <button class="btn btn-secondary" onclick="closeModal('detailModal')">Close</button>
+  `;
+  openModal('detailModal');
+}
+
+// ==================== Original File Upload & Submit Functions ====================
+let noticeAttachFile = null;
+
+window.handleNoticeFileSelect = function(input) {
+  if (input.files[0]) {
+    noticeAttachFile = input.files[0];
+    const chosen = document.getElementById('notice-file-chosen');
+    chosen.style.display = 'flex';
+    chosen.innerHTML = `<span>📎</span> ${noticeAttachFile.name} <button onclick="clearNoticeFile()" style="background:none;border:none;color:var(--accent-danger);cursor:pointer;font-size:0.8rem;padding:0 4px">✕</button>`;
+    document.getElementById('notice-attach-zone').style.borderColor = 'var(--accent)';
+  }
+};
+window.handleNoticeFileDrop = function(e) {
+  e.preventDefault();
+  document.getElementById('notice-attach-zone').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const allowed = ['image/jpeg','image/png','image/gif','application/pdf'];
+  if (!allowed.includes(file.type)) { toast('Only images and PDFs allowed','error'); return; }
+  noticeAttachFile = file;
+  const chosen = document.getElementById('notice-file-chosen');
+  chosen.style.display = 'flex';
+  chosen.innerHTML = `<span>📎</span> ${file.name} <button onclick="clearNoticeFile()" style="background:none;border:none;color:var(--accent-danger);cursor:pointer;font-size:0.8rem;padding:0 4px">✕</button>`;
+  document.getElementById('notice-attach-zone').style.borderColor = 'var(--accent)';
+};
+window.clearNoticeFile = function() {
+  noticeAttachFile = null;
+  document.getElementById('notice-file-chosen').style.display = 'none';
+  document.getElementById('notice-file-input').value = '';
+  document.getElementById('notice-attach-zone').style.borderColor = 'var(--border)';
+};
+
+async function submitNotice() {
+  const title = document.getElementById('n-title').value.trim();
+  const type = document.getElementById('n-type').value;
+  const priority = document.getElementById('n-priority').value;
+  const content = document.getElementById('n-content').value.trim();
+  const deadline = document.getElementById('n-deadline').value;
+  const target = document.getElementById('n-target').value;
+  const link = document.getElementById('n-link').value.trim();
+  const pinned = document.getElementById('n-pin').checked;
+
+  if (!title || !type || !content) { toast('Title, type and content are required', 'error'); return; }
+  if (noticeAttachFile && noticeAttachFile.size > 10 * 1024 * 1024) { toast('File too large. Max 10MB', 'error'); return; }
+
+  try {
+    const btn = document.getElementById('notice-submit-btn');
+    btn.disabled = true; btn.textContent = 'Posting...';
+    let attachUrl = null, attachName = null, attachType = null;
+    if (noticeAttachFile) {
+      document.getElementById('notice-upload-progress-wrap').style.display = 'block';
+      attachUrl = await uploadAttachment(noticeAttachFile, (pct) => {
+        document.getElementById('notice-upload-prog').style.width = pct + '%';
+        document.getElementById('notice-upload-prog-text').textContent = `Uploading... ${pct}%`;
+      });
+      attachName = noticeAttachFile.name;
+      attachType = noticeAttachFile.type;
+      document.getElementById('notice-upload-progress-wrap').style.display = 'none';
+    }
+    const data = {
+      title, type, priority, content, target, pinned,
+      deadline: deadline || null,
+      link: link || null,
+      authorId: currentUser.uid,
+      authorName: currentUserData.name || currentUserData.email,
+      bookmarks: [],
+      ...(attachUrl ? { attachUrl, attachName, attachType } : {}),
+      createdAt: serverTimestamp()
+    };
+    const ref = await addDoc(collection(db, 'notices'), data);
+    allNotices.unshift({ id: ref.id, ...data, createdAt: { toDate: () => new Date(), toMillis: () => Date.now() } });
+    renderNotices();
+    closeModal('postModal');
+    btn.disabled = false; btn.innerHTML = '📢 Post Notice';
+    toast('Notice posted successfully!', 'success');
+    ['n-title','n-content','n-link','n-deadline'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('n-type').value = '';
+    document.getElementById('n-pin').checked = false;
+    window.clearNoticeFile();
+  } catch(e) {
+    const btn = document.getElementById('notice-submit-btn');
+    btn.disabled = false; btn.innerHTML = '📢 Post Notice';
+    toast('Failed to post notice', 'error');
+  }
+}
+window.submitNotice = submitNotice;
+
+let tipAttachFile = null;
+
+window.handleTipFileSelect = function(input) {
+  if (input.files[0]) {
+    tipAttachFile = input.files[0];
+    const chosen = document.getElementById('tip-file-chosen');
+    chosen.style.display = 'flex';
+    chosen.innerHTML = `<span>📎</span> ${tipAttachFile.name} <button onclick="clearTipFile()" style="background:none;border:none;color:var(--accent-danger);cursor:pointer;font-size:0.8rem;padding:0 4px">✕</button>`;
+    document.getElementById('tip-attach-zone').style.borderColor = 'var(--accent3)';
+  }
+};
+window.handleTipFileDrop = function(e) {
+  e.preventDefault();
+  document.getElementById('tip-attach-zone').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const allowed = ['image/jpeg','image/png','image/gif','application/pdf'];
+  if (!allowed.includes(file.type)) { toast('Only images and PDFs allowed','error'); return; }
+  tipAttachFile = file;
+  const chosen = document.getElementById('tip-file-chosen');
+  chosen.style.display = 'flex';
+  chosen.innerHTML = `<span>📎</span> ${file.name} <button onclick="clearTipFile()" style="background:none;border:none;color:var(--accent-danger);cursor:pointer;font-size:0.8rem;padding:0 4px">✕</button>`;
+  document.getElementById('tip-attach-zone').style.borderColor = 'var(--accent3)';
+};
+window.clearTipFile = function() {
+  tipAttachFile = null;
+  document.getElementById('tip-file-chosen').style.display = 'none';
+  document.getElementById('tip-file-input').value = '';
+  document.getElementById('tip-attach-zone').style.borderColor = 'var(--border)';
+};
+
+async function submitTip() {
+  const title = document.getElementById('tip-title').value.trim();
+  const type = document.getElementById('tip-type').value;
+  const content = document.getElementById('tip-content').value.trim();
+  const link = document.getElementById('tip-link').value.trim();
+  if (!title) { toast('Please enter a title', 'error'); return; }
+  if (tipAttachFile && tipAttachFile.size > 10 * 1024 * 1024) { toast('File too large. Max 10MB', 'error'); return; }
+  try {
+    const btn = document.getElementById('tip-submit-btn');
+    btn.disabled = true; btn.textContent = 'Submitting...';
+    let attachUrl = null, attachName = null, attachType = null;
+    if (tipAttachFile) {
+      document.getElementById('tip-upload-progress-wrap').style.display = 'block';
+      attachUrl = await uploadAttachment(tipAttachFile, (pct) => {
+        document.getElementById('tip-upload-prog').style.width = pct + '%';
+        document.getElementById('tip-upload-prog-text').textContent = `Uploading... ${pct}%`;
+      });
+      attachName = tipAttachFile.name;
+      attachType = tipAttachFile.type;
+      document.getElementById('tip-upload-progress-wrap').style.display = 'none';
+    }
+    await addDoc(collection(db, 'notifications'), {
+      title, type,
+      content: content || '',
+      link: link || null,
+      approved: false,
+      submittedBy: currentUser.uid,
+      authorName: currentUserData.name || 'Student',
+      ...(attachUrl ? { attachUrl, attachName, attachType } : {}),
+      createdAt: serverTimestamp()
+    });
+    closeModal('tipModal');
+    btn.disabled = false; btn.innerHTML = '💡 Submit for Review';
+    toast('Tip submitted! Admin will review it shortly. 👍', 'success');
+    document.getElementById('tip-title').value = '';
+    document.getElementById('tip-content').value = '';
+    document.getElementById('tip-link').value = '';
+    window.clearTipFile();
+  } catch(e) {
+    const btn = document.getElementById('tip-submit-btn');
+    btn.disabled = false; btn.innerHTML = '💡 Submit for Review';
+    toast('Failed to submit tip', 'error');
+  }
+}
+window.submitTip = submitTip;
+
+async function submitPush() {
+  const title = document.getElementById('push-title').value.trim();
+  const type = document.getElementById('push-type').value;
+  const content = document.getElementById('push-content').value.trim();
+  if (!title) { toast('Please enter a title', 'error'); return; }
+  try {
+    await pushNotification(title, type, content, null, currentUserData.name || 'Admin');
+    closeModal('pushModal');
+    toast('Notification pushed to all users! 🔔', 'success');
+    document.getElementById('push-title').value = '';
+    document.getElementById('push-content').value = '';
+  } catch(e) { toast('Failed to push notification', 'error'); }
+}
+
+async function deleteNotice(id) {
+  if (!confirm('Delete this notice?')) return;
+  try {
+    await deleteDoc(doc(db, 'notices', id));
+    allNotices = allNotices.filter(n => n.id !== id);
+    renderNotices();
+    toast('Notice deleted', 'success');
+  } catch(e) { toast('Failed to delete', 'error'); }
+}
+
+async function bookmarkNotice(id) {
+  try {
+    const ref = doc(db, 'notices', id);
+    const n = allNotices.find(x => x.id === id);
+    const has = n.bookmarks?.includes(currentUser.uid);
+    if (has) {
+      await updateDoc(ref, { bookmarks: arrayRemove(currentUser.uid) });
+      n.bookmarks = n.bookmarks.filter(b => b !== currentUser.uid);
+    } else {
+      await updateDoc(ref, { bookmarks: arrayUnion(currentUser.uid) });
+      n.bookmarks = [...(n.bookmarks || []), currentUser.uid];
+    }
+    renderNotices();
+    toast(has ? 'Bookmark removed' : 'Bookmarked!', 'success');
+  } catch(e) { toast('Failed', 'error'); }
+}
+
+function renderSidebarStats() {
+  const counts = {};
+  allNotices.forEach(n => { counts[n.type] = (counts[n.type] || 0) + 1; });
+  // Note: This function assumes sidebar elements exist. If they don't, it won't break.
+  const statsEl = document.getElementById('notice-stats-list');
+  if (statsEl) {
+    statsEl.innerHTML = Object.entries(counts).map(([type, count]) => {
+      const tc = typeConfig[type] || typeConfig.general;
+      return `<div class="stat-row" style="display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0;border-bottom:1px solid var(--border)">
+        <span style="color:${tc.color}">${tc.emoji} ${type}</span>
+        <span class="badge">${count}</span>
+      </div>`;
+    }).join('') || '<p style="color:var(--text-muted);font-size:0.85rem">No notices yet</p>';
+  }
+}
+
+function renderDeadlines() {
+  const upcoming = allNotices
+    .filter(n => n.deadline && new Date(n.deadline) > new Date())
+    .sort((a,b) => new Date(a.deadline) - new Date(b.deadline))
+    .slice(0, 5);
+  const deadlinesEl = document.getElementById('deadlines-list');
+  if (deadlinesEl) {
+    deadlinesEl.innerHTML = upcoming.map(n => {
+      const d = new Date(n.deadline);
+      const daysLeft = Math.ceil((d - new Date()) / (1000*60*60*24));
+      const color = daysLeft <= 2 ? '#ef4444' : daysLeft <= 7 ? '#f97316' : '#22c55e';
+      return `<div style="padding:0.5rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:0.5rem;cursor:pointer" onclick="openDetail('${n.id}')">
+        <span style="font-size:0.82rem;color:var(--text-secondary)">${n.title.substring(0,30)}...</span>
+        <span style="font-size:0.75rem;color:${color};white-space:nowrap;font-weight:600">${daysLeft}d left</span>
+      </div>`;
+    }).join('');
+  }
+}
+</script>
+
+<style>
+/* Your original full styles */
+.notice-filter-bar { background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1.5rem;display:flex;flex-direction:column;gap:0.75rem }
+.type-filter-grid { display:flex;gap:0.5rem;flex-wrap:wrap }
+.notice-chip { padding:0.4rem 0.9rem;border:1px solid var(--border);border-radius:20px;background:var(--bg-tertiary);color:var(--text-secondary);cursor:pointer;font-size:0.85rem;font-family:inherit;transition:all .2s }
+.notice-chip.active,.notice-chip:hover { background:var(--accent);color:white;border-color:var(--accent) }
+.priority-filter { display:flex;align-items:center }
+.select-input { background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.75rem;color:var(--text-primary);font-size:0.9rem }
+.notices-layout { display:block }
+.sidebar-widget { background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1rem }
+.widget-title { font-size:0.9rem;font-weight:700;color:var(--text-primary);margin:0 0 0.75rem }
+.pinned-section-label { font-size:0.8rem;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem }
+.notice-card { background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:0.75rem;cursor:pointer;transition:all .2s;display:flex;gap:1rem }
+.notice-card:hover { border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 16px rgba(79,142,247,0.1) }
+.notice-card.pinned { border-color:rgba(245,158,11,0.4);background:linear-gradient(135deg,var(--bg-secondary),rgba(245,158,11,0.05)) }
+.notice-card.expired { opacity:0.6 }
+.notice-card-left { flex-shrink:0 }
+.notice-type-badge { padding:0.3rem 0.6rem;border-radius:8px;font-size:0.75rem;font-weight:600;white-space:nowrap }
+.notice-card-body { flex:1;min-width:0 }
+.notice-card-top { display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem;margin-bottom:0.5rem }
+.notice-title { font-size:1rem;font-weight:600;color:var(--text-primary);margin:0 }
+.notice-badges { display:flex;gap:0.3rem;flex-wrap:wrap;flex-shrink:0 }
+.priority-badge { padding:0.2rem 0.5rem;border-radius:6px;font-size:0.72rem;font-weight:600;white-space:nowrap }
+.expired-badge { padding:0.2rem 0.5rem;border-radius:6px;font-size:0.72rem;font-weight:600;background:rgba(107,114,128,0.15);color:#9ca3af }
+.notice-preview { font-size:0.85rem;color:var(--text-muted);margin:0 0 0.75rem;line-height:1.5 }
+.notice-card-footer { display:flex;align-items:center;justify-content:space-between;gap:0.5rem;flex-wrap:wrap }
+.notice-meta { display:flex;gap:0.75rem;flex-wrap:wrap;font-size:0.78rem;color:var(--text-muted) }
+.notice-actions { display:flex;align-items:center;gap:0.5rem }
+.icon-btn { background:none;border:none;cursor:pointer;font-size:1rem;padding:0.25rem;border-radius:6px;transition:background .2s }
+.icon-btn:hover { background:var(--bg-tertiary) }
+.notice-detail-header { margin-bottom:1rem }
+.notice-detail-meta { display:flex;flex-wrap:wrap;gap:0.75rem;font-size:0.85rem;color:var(--text-muted);padding:0.75rem;background:var(--bg-tertiary);border-radius:8px }
+.notice-detail-content { white-space:pre-wrap;line-height:1.8;color:var(--text-secondary);margin:1rem 0;padding:1rem;background:var(--bg-tertiary);border-radius:8px;border-left:3px solid var(--accent) }
+.notice-link-box { margin-top:1rem }
+.badge { background:var(--accent);color:white;padding:0.1rem 0.5rem;border-radius:20px;font-size:0.75rem;font-weight:700 }
+@media(max-width:900px){.notices-layout{grid-template-columns:1fr}.notices-sidebar{display:none}}
+
+.priority-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 7px 36px 7px 14px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: var(--font-main);
+  font-weight: 500;
+  cursor: pointer;
+  width: auto;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b9abf' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  transition: all 0.18s;
+}
+.priority-select:hover { border-color: var(--accent); }
+.priority-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.fab-tip {
+  display: none;
+  position: fixed;
+  bottom: 90px; right: 16px;
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  background: rgba(0,217,163,0.9);
+  color: white; border: none;
+  box-shadow: 0 4px 16px rgba(0,217,163,0.4);
+  cursor: pointer; font-size: 1.3rem;
+  align-items: center; justify-content: center;
+  z-index: 150; transition: var(--transition);
+}
+.fab-tip:active { transform: scale(0.92); }
+@media (max-width: 768px) {
+  .fab-tip { display: flex; }
+  .desktop-post-btn { display: none !important; }
+  .notice-card { padding: 14px !important; }
+  .notice-title { font-size: 0.95rem !important; }
+  .notice-meta { font-size: 0.72rem !important; flex-wrap: wrap !important; gap: 6px !important; }
+  #notices-list { padding-bottom: 70px !important; }
+}
+</style>
+</body>
+</html>

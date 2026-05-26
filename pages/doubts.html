@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Doubt Solver — CampusConnect</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css"/>
+  <style>
+    .doubt-list-view { display:block; }
+    .doubt-detail-view { display:none; }
+    .doubt-detail-view.active { display:block; }
+    .doubt-list-view.hidden { display:none; }
+    .answer-card { background:var(--bg-card);border:1px solid var(--border-soft);border-radius:var(--radius);padding:20px;margin-bottom:12px; }
+    .answer-card.best { border-color:var(--accent-success);background:rgba(79,206,142,0.04); }
+    .status-badge { padding:3px 10px;border-radius:var(--radius-full);font-size:0.72rem;font-weight:700; }
+    .status-badge.open { background:rgba(79,142,247,0.1);color:var(--accent); }
+    .status-badge.answered { background:rgba(79,206,142,0.1);color:var(--accent-success); }
+
+    /* AI Button */
+    .ai-btn {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 9999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 8px;
+    }
+    .ai-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+    }
+    .ai-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .instagram-thread { background:var(--bg-card);border:1px solid var(--border-soft);border-radius:var(--radius-lg);overflow:hidden; }
+    .thread-responses-wrap { border-top:1px solid var(--border-soft); }
+    .thread-container { max-width:780px;margin:0 auto; }
+    .thread-question { padding:20px 24px; }
+    .thread-q-meta { display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap; }
+    .thread-avatar { width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;color:white;flex-shrink:0; }
+    .thread-author { font-weight:700;font-size:0.9rem;color:var(--text-primary); }
+    .thread-time { font-size:0.75rem;color:var(--text-muted);margin-left:6px; }
+    .thread-tags { display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto; }
+    .thread-q-title { font-size:1.3rem;font-weight:800;margin-bottom:12px;line-height:1.4; }
+    .thread-q-body { font-size:0.9rem;color:var(--text-secondary);line-height:1.8;white-space:pre-wrap;margin-bottom:16px; }
+    .thread-q-footer { display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border-soft); }
+    .thread-vote-btn { display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:var(--radius-full);font-size:0.82rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border-soft);color:var(--text-muted);cursor:pointer;transition:var(--transition);font-family:var(--font-main); }
+    .thread-vote-btn:hover,.thread-vote-btn.active { background:var(--accent-soft);color:var(--accent);border-color:var(--accent); }
+    .thread-count { font-size:0.78rem;color:var(--text-muted);font-weight:400; }
+    .thread-comment { display:flex;gap:12px;padding:14px 24px;border-bottom:1px solid var(--border-soft); }
+    .thread-comment:last-child { border-bottom:none; }
+    .thread-comment.best .thread-comment-body { background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2);border-radius:var(--radius);padding:14px; }
+    .thread-comment-body { flex:1;min-width:0; }
+    .thread-comment-header { display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px; }
+    .thread-comment-content { font-size:0.9rem;color:var(--text-secondary);line-height:1.8;white-space:pre-wrap;margin-bottom:10px; }
+    .thread-comment-actions { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
+    .thread-action-btn { display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:var(--radius-full);font-size:0.78rem;font-weight:500;background:var(--bg-hover);border:1px solid var(--border-soft);color:var(--text-muted);cursor:pointer;transition:var(--transition);font-family:var(--font-main); }
+    .thread-action-btn:hover,.thread-action-btn.active { background:var(--accent-soft);color:var(--accent);border-color:var(--accent); }
+    .thread-action-btn.success { color:var(--accent-success);border-color:rgba(34,197,94,0.3); }
+    .thread-action-btn.success:hover { background:rgba(34,197,94,0.1); }
+    .thread-action-btn.danger { color:var(--accent-danger);border-color:rgba(239,68,68,0.25); }
+    .thread-action-btn.danger:hover { background:rgba(239,68,68,0.1); }
+    .best-badge { padding:3px 10px;background:rgba(34,197,94,0.12);color:var(--accent-success);border-radius:var(--radius-full);font-size:0.72rem;font-weight:700; }
+    .reply-box { display:flex;gap:12px;align-items:flex-start;padding:16px 20px;background:var(--bg-tertiary);border-top:1px solid var(--border-soft); }
+    .reply-box-avatar { width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;color:white;flex-shrink:0;margin-top:4px; }
+    .reply-box-input-wrap { flex:1;min-width:0; }
+    .reply-input { width:100%;background:var(--bg-input);border:1.5px solid var(--border-soft);border-radius:var(--radius);padding:10px 14px;font-size:0.9rem;color:var(--text-primary);resize:none;transition:var(--transition);font-family:var(--font-main);min-height:44px;box-sizing:border-box; }
+    .reply-input:focus { border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);outline:none; }
+    .reply-box-actions { display:flex;align-items:center;justify-content:space-between;margin-top:8px; }
+
+    .doubt-controls-box { background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;flex-direction:column;gap:10px; }
+    .doubt-search-bar { display:flex;align-items:center;gap:10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;padding:8px 12px; }
+    .doubt-search-bar input { background:none;border:none;outline:none;color:var(--text-primary);width:100%;font-size:0.88rem;font-family:var(--font-main); }
+    .doubt-filter-row { display:flex;gap:10px; }
+    .doubt-filter-row select { flex:1;background:var(--bg-card);border:1.5px solid var(--border-soft);border-radius:var(--radius-sm);color:var(--text-primary);font-size:0.84rem;font-weight:500;padding:8px 10px;cursor:pointer;font-family:var(--font-main);outline:none;transition:border-color 0.18s;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238896b3' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px; }
+    .doubt-filter-row select:focus { border-color:var(--accent); }
+
+    .fab-ask { display:none;position:fixed;bottom:90px;right:16px;width:54px;height:54px;border-radius:50%;background:var(--accent);color:white;border:none;box-shadow:0 4px 16px rgba(79,142,247,0.5);cursor:pointer;align-items:center;justify-content:center;z-index:150;transition:var(--transition); }
+    .fab-ask:active { transform:scale(0.92); }
+
+    @media (max-width: 768px) {
+      .fab-ask { display:flex; }
+      .desktop-ask-btn { display:none !important; }
+      .page-content { overflow-x:hidden; }
+      #doubts-list { padding-bottom:70px; }
+      .doubt-controls-box { padding:10px 12px;gap:8px;margin-bottom:12px; }
+      .doubt-filter-row select { font-size:0.8rem;padding:7px 8px; }
+      .doubt-card { padding:12px !important;gap:8px !important; }
+      .doubt-title { font-size:0.92rem !important; }
+      .doubt-desc { font-size:0.79rem !important;-webkit-line-clamp:2 !important;display:-webkit-box !important;-webkit-box-orient:vertical !important;overflow:hidden !important; }
+      .doubt-meta,.doubt-footer { flex-wrap:wrap !important;gap:6px !important;font-size:0.72rem !important; }
+      .doubt-vote { gap:4px !important; }
+      .vote-btn { width:28px !important;height:28px !important;font-size:0.75rem !important; }
+      .vote-count { font-size:0.85rem !important; }
+      .tag { font-size:0.7rem !important;padding:2px 7px !important; }
+      .status-badge { font-size:0.68rem !important;padding:2px 7px !important; }
+      .thread-question { padding:14px 16px !important; }
+      .thread-comment { padding:12px 16px !important; }
+      .reply-box { padding:12px 14px !important; }
+    }
+  </style>
+</head>
+<body>
+<div id="app-root"></div>
+
+<!-- ASK DOUBT MODAL (unchanged) -->
+<div class="modal-overlay" id="modal-ask-doubt">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Ask a Doubt</div><button class="modal-close" onclick="closeModal('modal-ask-doubt')">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Question Title <span style="color:var(--accent-danger)">*</span></label><input type="text" id="d-title" placeholder="e.g. Explain Java multithreading with examples"/></div>
+      <div class="form-group"><label class="form-label">Detailed Description <span style="color:var(--accent-danger)">*</span></label><textarea id="d-desc" rows="5" placeholder="Add code snippets, error messages, what you've tried..."></textarea></div>
+      <div class="form-group"><label class="form-label">Subject / Topic</label>
+        <select id="d-subject">
+          <option value="">Select Subject</option>
+          <option>Data Structures & Algorithms</option><option>Java Programming</option><option>Python</option>
+          <option>C / C++</option><option>Database Management</option><option>Operating Systems</option>
+          <option>Computer Networks</option><option>Web Development</option><option>Machine Learning</option>
+          <option>Software Engineering</option><option>Mathematics</option><option>Physics</option>
+          <option>Placement Preparation</option><option>Other</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Year Level</label>
+        <select id="d-year"><option value="">All Years</option><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Attach Image / PDF <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+        <div id="doubt-attach-zone" style="border:1.5px dashed var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;background:var(--bg-input);transition:var(--transition)" onclick="document.getElementById('doubt-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleDoubtFileDrop(event)">
+          <span style="font-size:1.4rem">📎</span>
+          <div>
+            <div style="font-size:0.82rem;font-weight:600;color:var(--text-secondary)">Click or drag to attach</div>
+            <div style="font-size:0.72rem;color:var(--text-muted)">Images (JPG, PNG) or PDF — max 10MB</div>
+          </div>
+        </div>
+        <input type="file" id="doubt-file-input" style="display:none" accept="image/jpeg,image/png,image/gif,application/pdf" onchange="handleDoubtFileSelect(this)"/>
+        <div id="doubt-file-chosen" style="display:none;margin-top:8px;font-size:0.8rem;color:var(--accent3);font-weight:600;display:flex;align-items:center;gap:6px"></div>
+        <div id="doubt-upload-progress-wrap" style="display:none;margin-top:8px">
+          <div style="height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden">
+            <div id="doubt-upload-prog" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s"></div>
+          </div>
+          <div id="doubt-upload-prog-text" style="font-size:0.72rem;color:var(--text-muted);margin-top:4px">Uploading...</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modal-ask-doubt')">Cancel</button><button class="btn btn-primary" id="ask-doubt-btn" onclick="askDoubt()"><i class="fa fa-question-circle"></i> Post Question</button></div>
+  </div>
+</div>
+
+<script type="module">
+import { requireAuth, getSidebarHTML, getLayoutHTML, toast, showLoading, openModal, closeModal, timeAgo, logout, db, collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp, getDocs, where, getDoc, doc, updateDoc, increment, arrayUnion, arrayRemove, deleteDoc, uploadAttachment } from '../js/app.js?v=76';
+
+window._logout = logout;
+window.openModal = openModal;
+window.closeModal = closeModal;
+
+let currentUser, currentUserData, currentDoubtId;
+let sortMode = 'newest';
+let subjectFilter = '';
+
+requireAuth((user, userData) => {
+  currentUser = user;
+  currentUserData = userData;
+
+  document.getElementById('app-root').innerHTML = getLayoutHTML('Doubt Solver', `
+    <div class="page-content">
+      <div class="doubt-list-view" id="doubt-list-view">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Doubt Solver</h1>
+            <p class="page-subtitle">Ask questions, get answers from seniors and peers</p>
+          </div>
+          <button class="btn btn-primary desktop-ask-btn" onclick="openModal('modal-ask-doubt')"><i class="fa fa-plus"></i> Ask Doubt</button>
+        </div>
+        <button class="fab-ask" onclick="openModal('modal-ask-doubt')" title="Ask Doubt">
+          <i class="fa fa-plus" style="font-size:1.3rem"></i>
+        </button>
+
+        <div class="doubt-controls-box">
+          <div class="doubt-search-bar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input type="text" id="doubt-search" placeholder="Search doubts..." oninput="searchDoubts(this.value)"/>
+          </div>
+          <div class="doubt-filter-row">
+            <select id="sel-subject" onchange="filterSubjectSel(this.value)">
+              <option value="">All Subjects</option>
+              <option value="Data Structures & Algorithms">DSA</option>
+              <option value="Java Programming">Java</option>
+              <option value="Python">Python</option>
+              <option value="C / C++">C / C++</option>
+              <option value="Web Development">Web Dev</option>
+              <option value="Machine Learning">ML/AI</option>
+              <option value="Placement Preparation">Placement</option>
+              <option value="Database Management">DBMS</option>
+              <option value="Other">Other</option>
+            </select>
+            <select id="sel-sort" onchange="filterSortSel(this.value)">
+              <option value="newest">Newest</option>
+              <option value="votes">Most Voted</option>
+              <option value="unanswered">Unanswered</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="doubts-list" style="display:flex;flex-direction:column;gap:16px;margin-top:8px"></div>
+        <div style="text-align:center;margin-top:16px"><button class="btn btn-secondary" onclick="loadMoreDoubts()">Load More</button></div>
+      </div>
+
+      <div class="doubt-detail-view" id="doubt-detail-view">
+        <div style="margin-bottom:16px">
+          <button class="btn btn-secondary btn-sm" onclick="showDoubtList()"><i class="fa fa-arrow-left"></i> Back to Questions</button>
+        </div>
+        <div class="thread-container">
+          <div class="instagram-thread">
+            <div id="doubt-detail-content"></div>
+            <div class="thread-responses-wrap">
+              <div id="answers-list"></div>
+            </div>
+            <div class="reply-box" id="reply-box">
+              <div class="reply-box-avatar" id="reply-avatar">U</div>
+              <div class="reply-box-input-wrap">
+                <textarea id="answer-input" rows="2" placeholder="Write a response..." class="reply-input" onfocus="this.rows=4" onblur="if(!this.value)this.rows=2"></textarea>
+                <div id="answer-file-chosen" style="display:none;margin:6px 0 4px;font-size:0.78rem;color:var(--accent3);font-weight:600;display:flex;align-items:center;gap:6px"></div>
+                <div id="answer-upload-progress-wrap" style="display:none;margin-bottom:6px">
+                  <div style="height:3px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden">
+                    <div id="answer-upload-prog" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s"></div>
+                  </div>
+                </div>
+                <div class="reply-box-actions">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:0.75rem;color:var(--text-muted)">Markdown supported</span>
+                    <label title="Attach image or PDF" style="cursor:pointer;display:flex;align-items:center;gap:4px;font-size:0.75rem;color:var(--text-muted);padding:4px 8px;border:1px solid var(--border-soft);border-radius:var(--radius-sm);background:var(--bg-card)">
+                      <i class="fa fa-paperclip"></i> Attach
+                      <input type="file" id="answer-file-input" style="display:none" accept="image/jpeg,image/png,image/gif,application/pdf" onchange="handleAnswerFileSelect(this)"/>
+                    </label>
+                  </div>
+                  <button class="btn btn-primary btn-sm" onclick="postAnswer()"><i class="fa fa-paper-plane"></i> Post</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `, userData.role);
+
+  document.getElementById('sidebar-nav').innerHTML = getSidebarHTML(userData.role);
+  loadDoubtsStats();
+  loadDoubts();
+});
+
+function showDoubtList() {
+  document.getElementById('doubt-list-view').classList.remove('hidden');
+  document.getElementById('doubt-detail-view').classList.remove('active');
+  currentDoubtId = null;
+}
+window.showDoubtList = showDoubtList;
+
+// ==================== GOOGLE GEMINI AI DOUBT SOLVER ====================
+async function askAiForAnswer(doubtId) {
+  const doubtRef = doc(db, 'doubts', doubtId);
+  const doubtSnap = await getDoc(doubtRef);
+  if (!doubtSnap.exists()) return;
+
+  const doubt = doubtSnap.data();
+
+  if (doubt.aiAnswered === true) {
+    toast("Campus AI has already answered this doubt", "info");
+    return;
+  }
+
+  if (!confirm("Let Campus AI solve this doubt?")) return;
+
+  const aiBtn = document.getElementById(`ai-btn-${doubtId}`);
+  if (aiBtn) {
+    aiBtn.disabled = true;
+    aiBtn.innerHTML = `<i class="fa fa-spinner fa-spin"></i> AI Thinking...`;
+  }
+
+  try {
+    const aiResponse = await callGeminiApi(doubt.title, doubt.description || '');
+
+    await addDoc(collection(db, 'doubts', doubtId, 'answers'), {
+      content: aiResponse,
+      authorId: "ai-assistant",
+      authorName: "Campus AI",
+      votes: 0,
+      votedBy: [],
+      isAi: true,
+      createdAt: serverTimestamp()
+    });
+
+    await updateDoc(doubtRef, { 
+      aiAnswered: true,
+      answersCount: increment(1),
+      status: 'answered'
+    });
+
+    toast("Campus AI has answered this doubt! 🤖", "success");
+
+    if (currentDoubtId === doubtId) {
+      openDoubt(doubtId);
+    } else {
+      loadDoubts();
+    }
+  } catch(e) {
+    toast("Failed to get AI answer. Please check your Gemini API key.", "error");
+    console.error(e);
+    if (aiBtn) {
+      aiBtn.disabled = false;
+      aiBtn.innerHTML = `<i class="fa fa-robot"></i> Ask Campus AI`;
+    }
+  }
+}
+window.askAiForAnswer = askAiForAnswer;
+
+// ==================== GOOGLE GEMINI API CALL (Improved) ====================
+async function callGeminiApi(title, description) {
+  // ←←← PUT YOUR REAL GEMINI API KEY HERE ←←←
+  const GEMINI_API_KEY = "AIzaSyBO-k0iHEeXcjhn9QvRzFUvuc3ul63CSH8";   // Change this to your actual key
+
+  if (GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE" || GEMINI_API_KEY.length < 30) {
+    throw new Error("Gemini API key is missing. Please add your real key in the code.");
+  }
+
+  const systemPrompt = `You are Campus AI, an expert, patient, and enthusiastic college professor teaching undergraduate engineering students.
+
+Your answers should be:
+- Clear and well-structured with headings and bullet points
+- Include practical Java code examples when relevant
+- Explain concepts step-by-step
+- Use simple language first, then go into details
+- Be accurate and avoid hallucination`;
+
+  const userPrompt = `Doubt Title: ${title}
+
+Description: ${description}
+
+Please explain this clearly with good examples and code where helpful.`;
+
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }],
+        generationConfig: { 
+          temperature: 0.7, 
+          maxOutputTokens: 1000 
+        }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Gemini API returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.candidates[0].content.parts[0].text || "Sorry, I couldn't generate an answer right now.";
+  } catch (error) {
+    console.error("Gemini API error:", error);
+    throw error;
+  }
+}
+
+// ==================== YOUR ORIGINAL CODE (FULL INTEGRITY) ====================
+async function loadDoubtsStats() {
+  try {
+    const all = await getDocs(collection(db,'doubts'));
+    const answered = all.docs.filter(d => d.data().status === 'answered');
+    const contributors = new Set(all.docs.map(d => d.data().authorId));
+  } catch(e) {}
+}
+
+async function loadDoubts(append = false) {
+  const container = document.getElementById('doubts-list');
+  if (!append) { 
+    container.innerHTML = '<div class="loading-spinner">Loading doubts...</div>'; 
+  }
+
+  try {
+    let q;
+    const orderField = sortMode === 'votes' ? 'votes' : 'createdAt';
+    if (subjectFilter) {
+      q = query(collection(db,'doubts'), where('subject','==',subjectFilter), orderBy(orderField,'desc'), limit(10));
+    } else if (sortMode === 'unanswered') {
+      q = query(collection(db,'doubts'), where('status','==','open'), orderBy('createdAt','desc'), limit(10));
+    } else {
+      q = query(collection(db,'doubts'), orderBy(orderField,'desc'), limit(10));
+    }
+
+    onSnapshot(q, (snap) => {
+      if (!append) container.innerHTML = '';
+      if (snap.empty && !append) {
+        container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">❓</div><div class="empty-state-title">No doubts yet</div><div class="empty-state-desc">Be the first to ask!</div></div>`;
+        return;
+      }
+
+      snap.docs.forEach(d => {
+        const qd = d.data();
+        const myVote = qd.votedBy?.includes(currentUser.uid) || false;
+        const isUnanswered = (qd.answersCount || 0) === 0;
+
+        const html = `
+          <div class="doubt-card" id="doubt-${d.id}" style="display:flex;gap:16px;cursor:pointer" onclick="openDoubt('${d.id}')">
+            <div class="doubt-vote">
+              <button class="vote-btn ${myVote?'active':''}" onclick="event.stopPropagation();voteDoubt('${d.id}',${myVote})"><i class="fa fa-arrow-up"></i></button>
+              <div class="vote-count">${qd.votes||0}</div>
+            </div>
+            <div class="doubt-body" style="flex:1">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <span class="status-badge ${qd.status||'open'}">${qd.status==='answered'?'✅ Answered':'🟢 Open'}</span>
+                ${qd.subject?`<span class="tag">${qd.subject}</span>`:''}
+              </div>
+              <div class="doubt-title">${qd.title}</div>
+              <div class="doubt-desc">${(qd.description||'').substring(0,180)}${(qd.description||'').length>180?'...':''}</div>
+              <div class="doubt-footer">
+                <span><i class="fa fa-user"></i> ${qd.authorName||'Unknown'}</span>
+                <span><i class="fa fa-clock"></i> ${timeAgo(qd.createdAt?.toDate())}</span>
+                <span><i class="fa fa-comment"></i> ${qd.answersCount||0} answers</span>
+                ${isUnanswered ? `<button id="ai-btn-${d.id}" class="ai-btn" onclick="event.stopPropagation();askAiForAnswer('${d.id}')"><i class="fa fa-robot"></i> Ask Campus AI</button>` : ''}
+              </div>
+            </div>
+          </div>`;
+
+        const existing = document.getElementById(`doubt-${d.id}`);
+        if (existing) existing.outerHTML = html;
+        else container.insertAdjacentHTML('beforeend', html);
+      });
+    });
+  } catch(e) {
+    console.error(e);
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-title">Error loading doubts</div></div>`;
+  }
+}
+
+async function voteDoubt(doubtId, hasVoted) {
+  const ref = doc(db,'doubts',doubtId);
+  if (hasVoted) {
+    await updateDoc(ref, { votes: increment(-1), votedBy: arrayRemove(currentUser.uid) });
+  } else {
+    await updateDoc(ref, { votes: increment(1), votedBy: arrayUnion(currentUser.uid) });
+  }
+}
+window.voteDoubt = voteDoubt;
+
+async function openDoubt(doubtId) {
+  currentDoubtId = doubtId;
+  document.getElementById('doubt-list-view').classList.add('hidden');
+  document.getElementById('doubt-detail-view').classList.add('active');
+
+  const doubtDoc = await getDoc(doc(db,'doubts',doubtId));
+  const q = doubtDoc.data();
+  const myVote = q.votedBy?.includes(currentUser.uid);
+
+  document.getElementById('doubt-detail-content').innerHTML = `
+    <div class="thread-question">
+      <div class="thread-q-meta">
+        <div class="thread-avatar">${(q.authorName||'U')[0].toUpperCase()}</div>
+        <div>
+          <span class="thread-author">${q.authorName}</span>
+          <span class="thread-time">${timeAgo(q.createdAt?.toDate())}</span>
+        </div>
+        <div class="thread-tags" style="margin-left:auto">
+          <span class="status-badge ${q.status||'open'}">${q.status==='answered'?'✅ Answered':'🟢 Open'}</span>
+          ${q.subject?`<span class="tag">${q.subject}</span>`:''}
+        </div>
+      </div>
+      <h2 class="thread-q-title">${q.title}</h2>
+      <div class="thread-q-body">${q.description || ''}</div>
+      <div class="thread-q-footer">
+        <button class="thread-vote-btn ${myVote?'active':''}" onclick="voteDoubt('${doubtId}',${myVote})">
+          <i class="fa fa-arrow-up"></i> <span>${q.votes||0}</span>
+        </button>
+      </div>
+    </div>`;
+
+  const replyAvatar = document.getElementById('reply-avatar');
+  if (replyAvatar) replyAvatar.textContent = (currentUserData.name||'U')[0].toUpperCase();
+
+  loadAnswers(doubtId, q.bestAnswerId, q.authorId);
+}
+window.openDoubt = openDoubt;
+
+async function loadAnswers(doubtId, bestAnswerId, doubtAuthorId) {
+  const container = document.getElementById('answers-list');
+  const q = query(collection(db,'doubts',doubtId,'answers'), orderBy('votes','desc'));
+  onSnapshot(q, (snap) => {
+    container.innerHTML = '';
+    if (snap.empty) {
+      container.innerHTML = '<div class="empty-state" style="padding:30px"><div class="empty-state-icon">💬</div><div class="empty-state-title">No answers yet</div><div class="empty-state-desc">Be the first to help or ask AI!</div></div>';
+      return;
+    }
+    snap.docs.forEach(d => {
+      const a = d.data();
+      const isBest = d.id === bestAnswerId;
+      const myVote = a.votedBy?.includes(currentUser.uid);
+      const canMarkBest = doubtAuthorId === currentUser.uid && !bestAnswerId;
+      const isMe = a.authorId === currentUser.uid;
+      const canDelete = (isMe || currentUserData.role==='admin' || currentUserData.role==='faculty') && !isBest;
+      container.innerHTML += `
+        <div class="thread-comment ${isBest?'best':''}">
+          <div class="thread-avatar" style="${isBest?'background:linear-gradient(135deg,var(--accent-success),#16a34a)':''}">${(a.authorName||'U')[0].toUpperCase()}</div>
+          <div class="thread-comment-body">
+            <div class="thread-comment-header">
+              <span class="thread-author">${a.authorName||'Unknown'}</span>
+              <span class="thread-time">${timeAgo(a.createdAt?.toDate())}</span>
+              ${isBest?'<span class="best-badge">✅ Best Answer</span>':''}
+              ${a.isAi ? '<span class="best-badge" style="background:#6366f120;color:#6366f1">🤖 AI Answer</span>' : ''}
+            </div>
+            <div class="thread-comment-content">${a.content}</div>
+            <div class="thread-comment-actions">
+              <button class="thread-action-btn ${myVote?'active':''}" onclick="voteAnswer('${doubtId}','${d.id}',${myVote})">
+                <i class="fa fa-arrow-up"></i> ${a.votes||0}
+              </button>
+              ${canMarkBest?`<button class="thread-action-btn success" onclick="markBestAnswer('${doubtId}','${d.id}','${a.authorId}')"><i class="fa fa-check"></i> Mark as Best</button>`:''}
+              ${canDelete?`<button class="thread-action-btn danger" onclick="deleteAnswer('${doubtId}','${d.id}')"><i class="fa fa-trash"></i></button>`:''}
+            </div>
+          </div>
+        </div>`;
+    });
+  });
+}
+
+async function voteAnswer(doubtId, answerId, hasVoted) {
+  const ref = doc(db,'doubts',doubtId,'answers',answerId);
+  if (hasVoted) await updateDoc(ref, { votes: increment(-1), votedBy: arrayRemove(currentUser.uid) });
+  else await updateDoc(ref, { votes: increment(1), votedBy: arrayUnion(currentUser.uid) });
+}
+window.voteAnswer = voteAnswer;
+
+async function markBestAnswer(doubtId, answerId, authorId) {
+  await updateDoc(doc(db,'doubts',doubtId), { bestAnswerId: answerId, status: 'answered' });
+  toast('Best answer marked!','success');
+}
+window.markBestAnswer = markBestAnswer;
+
+let answerAttachFile = null;
+window.handleAnswerFileSelect = function(input) {
+  if (input.files[0]) {
+    answerAttachFile = input.files[0];
+    const chosen = document.getElementById('answer-file-chosen');
+    chosen.style.display = 'flex';
+    chosen.innerHTML = `<span>📎</span> ${answerAttachFile.name} <button onclick="clearAnswerFile()" style="background:none;border:none;color:var(--accent-danger);cursor:pointer;font-size:0.8rem;padding:0 4px">✕</button>`;
+  }
+};
+window.clearAnswerFile = function() {
+  answerAttachFile = null;
+  document.getElementById('answer-file-chosen').style.display = 'none';
+  document.getElementById('answer-file-input').value = '';
+};
+
+async function postAnswer() {
+  const content = document.getElementById('answer-input').value.trim();
+  if (!content) { toast('Write your answer first','error'); return; }
+  if (!currentDoubtId) return;
+  try {
+    const btn = document.querySelector('.reply-box .btn-primary');
+    btn.disabled = true; btn.textContent = 'Posting...';
+    showLoading(true);
+    let attachUrl = null, attachName = null, attachType = null;
+    if (answerAttachFile) {
+      document.getElementById('answer-upload-progress-wrap').style.display = 'block';
+      attachUrl = await uploadAttachment(answerAttachFile, (pct) => {
+        document.getElementById('answer-upload-prog').style.width = pct + '%';
+      });
+      attachName = answerAttachFile.name;
+      attachType = answerAttachFile.type;
+      document.getElementById('answer-upload-progress-wrap').style.display = 'none';
+    }
+    await addDoc(collection(db,'doubts',currentDoubtId,'answers'), {
+      content, authorId: currentUser.uid, authorName: currentUserData.name,
+      authorReputation: currentUserData.reputation || 0,
+      votes: 0, votedBy: [],
+      ...(attachUrl ? { attachUrl, attachName, attachType } : {}),
+      createdAt: serverTimestamp()
+    });
+    await updateDoc(doc(db,'doubts',currentDoubtId), { answersCount: increment(1) });
+    await updateDoc(doc(db,'users',currentUser.uid), { answersCount: increment(1), reputation: increment(5) });
+    document.getElementById('answer-input').value = '';
+    window.clearAnswerFile();
+    showLoading(false);
+    btn.disabled = false; btn.innerHTML = '<i class="fa fa-paper-plane"></i> Post';
+    toast('Answer posted! +5 reputation earned 🎉','success');
+  } catch(e) {
+    showLoading(false);
+    const btn = document.querySelector('.reply-box .btn-primary');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa fa-paper-plane"></i> Post'; }
+    toast('Failed to post answer','error');
+  }
+}
+window.postAnswer = postAnswer;
+
+let doubtAttachFile = null;
+window.handleDoubtFileSelect = function(input) {
+  if (input.files[0]) {
+    doubtAttachFile = input.files[0];
+    const chosen = document.getElementById('doubt-file-chosen');
+    chosen.style.display = 'flex';
+    chosen.innerHTML = `<span>📎</span> ${doubtAttachFile.name} <button onclick="clearDoubtFile()" style="background:none;border:none;color:var(--accent-danger);cursor:pointer;font-size:0.8rem;padding:0 4px">✕</button>`;
+    document.getElementById('doubt-attach-zone').style.borderColor = 'var(--accent3)';
+  }
+};
+window.handleDoubtFileDrop = function(e) {
+  e.preventDefault();
+  document.getElementById('doubt-attach-zone').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const allowed = ['image/jpeg','image/png','image/gif','application/pdf'];
+    if (!allowed.includes(file.type)) { toast('Only images and PDFs allowed','error'); return; }
+    doubtAttachFile = file;
+    const chosen = document.getElementById('doubt-file-chosen');
+    chosen.style.display = 'flex';
+    chosen.innerHTML = `<span>📎</span> ${file.name} <button onclick="clearDoubtFile()" style="background:none;border:none;color:var(--accent-danger);cursor:pointer;font-size:0.8rem;padding:0 4px">✕</button>`;
+    document.getElementById('doubt-attach-zone').style.borderColor = 'var(--accent3)';
+  }
+};
+window.clearDoubtFile = function() {
+  doubtAttachFile = null;
+  document.getElementById('doubt-file-chosen').style.display = 'none';
+  document.getElementById('doubt-file-input').value = '';
+  document.getElementById('doubt-attach-zone').style.borderColor = 'var(--border)';
+};
+
+async function askDoubt() {
+  const title = document.getElementById('d-title').value.trim();
+  const desc = document.getElementById('d-desc').value.trim();
+  const subject = document.getElementById('d-subject').value;
+  const year = document.getElementById('d-year').value;
+  if (!title || !desc) { toast('Title and description required','error'); return; }
+  if (doubtAttachFile && doubtAttachFile.size > 10 * 1024 * 1024) { toast('File too large. Max 10MB','error'); return; }
+  try {
+    const btn = document.getElementById('ask-doubt-btn');
+    btn.disabled = true; btn.textContent = 'Posting...';
+    showLoading(true);
+    let attachUrl = null, attachName = null, attachType = null;
+    if (doubtAttachFile) {
+      document.getElementById('doubt-upload-progress-wrap').style.display = 'block';
+      attachUrl = await uploadAttachment(doubtAttachFile, (pct) => {
+        document.getElementById('doubt-upload-prog').style.width = pct + '%';
+        document.getElementById('doubt-upload-prog-text').textContent = `Uploading... ${pct}%`;
+      });
+      attachName = doubtAttachFile.name;
+      attachType = doubtAttachFile.type;
+      document.getElementById('doubt-upload-progress-wrap').style.display = 'none';
+    }
+    await addDoc(collection(db,'doubts'), {
+      title, description: desc, subject, year,
+      authorId: currentUser.uid, authorName: currentUserData.name,
+      authorReputation: currentUserData.reputation || 0,
+      votes: 0, votedBy: [], answersCount: 0, status: 'open',
+      ...(attachUrl ? { attachUrl, attachName, attachType } : {}),
+      createdAt: serverTimestamp()
+    });
+    closeModal('modal-ask-doubt');
+    showLoading(false);
+    btn.disabled = false; btn.innerHTML = '<i class="fa fa-question-circle"></i> Post Question';
+    toast('Question posted!','success');
+    document.getElementById('d-title').value = '';
+    document.getElementById('d-desc').value = '';
+    window.clearDoubtFile();
+  } catch(e) {
+    showLoading(false);
+    const btn = document.getElementById('ask-doubt-btn');
+    btn.disabled = false; btn.innerHTML = '<i class="fa fa-question-circle"></i> Post Question';
+    toast('Failed to post question','error');
+  }
+}
+window.askDoubt = askDoubt;
+
+async function deleteDoubt(doubtId) {
+  if (!confirm('Delete this question?')) return;
+  await deleteDoc(doc(db,'doubts',doubtId));
+  toast('Question deleted','success');
+}
+window.deleteDoubt = deleteDoubt;
+
+async function deleteAnswer(doubtId, answerId) {
+  if (!confirm('Delete this answer?')) return;
+  await deleteDoc(doc(db,'doubts',doubtId,'answers',answerId));
+  await updateDoc(doc(db,'doubts',doubtId), { answersCount: increment(-1) });
+}
+window.deleteAnswer = deleteAnswer;
+
+function filterSubjectSel(val) { subjectFilter = val; loadDoubts(); }
+window.filterSubjectSel = filterSubjectSel;
+
+function filterSortSel(val) { sortMode = val; loadDoubts(); }
+window.filterSortSel = filterSortSel;
+
+let searchTimeout;
+function searchDoubts(q) {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(async () => {
+    if (!q.trim()) { loadDoubts(); return; }
+    const container = document.getElementById('doubts-list');
+    container.innerHTML = '<div class="loading-spinner">Loading...</div>';
+    const snap = await getDocs(collection(db,'doubts'));
+    const results = snap.docs.filter(d => {
+      const data = d.data();
+      return data.title?.toLowerCase().includes(q.toLowerCase()) || data.description?.toLowerCase().includes(q.toLowerCase());
+    });
+    container.innerHTML = '';
+    if (!results.length) { container.innerHTML = '<div class="empty-state"><div class="empty-state-title">No results found</div></div>'; return; }
+    results.forEach(d => {
+      const qd = d.data();
+      container.innerHTML += `<div class="doubt-card" style="display:flex;gap:16px;cursor:pointer" onclick="openDoubt('${d.id}')">
+        <div class="doubt-vote"><div class="vote-count">${qd.votes||0}</div><div style="font-size:0.7rem;color:var(--text-muted)">votes</div></div>
+        <div class="doubt-body" style="flex:1"><div class="doubt-title">${qd.title}</div><div class="doubt-desc">${qd.description?.substring(0,150)||''}</div>
+        <div class="doubt-footer"><span><i class="fa fa-comment"></i> ${qd.answersCount||0} answers</span><span><i class="fa fa-clock"></i> ${timeAgo(qd.createdAt?.toDate())}</span></div></div></div>`;
+    });
+  }, 400);
+}
+window.searchDoubts = searchDoubts;
+
+window.loadMoreDoubts = () => loadDoubts(true);
+
+</script>
+</body>
+</html>

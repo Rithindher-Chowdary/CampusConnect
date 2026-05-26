@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tests & Exams — CampusConnect</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css"/>
+  <style>
+    .tests-list-view { display:block; }
+    .tests-list-view.hidden { display:none; }
+    .exam-view { display:none; }
+    .exam-view.active { display:block; }
+    .result-view { display:none; }
+    .result-view.active { display:block; }
+    .create-test-view { display:none; }
+    .create-test-view.active { display:block; }
+    .question-nav { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px; }
+    .q-nav-btn { width:36px;height:36px;border-radius:var(--radius-sm);font-size:0.8rem;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;border:2px solid var(--border);background:var(--bg-card);color:var(--text-secondary);transition:var(--transition); }
+    .q-nav-btn.answered { border-color:var(--accent-success);background:rgba(79,206,142,0.1);color:var(--accent-success); }
+    .q-nav-btn.current { border-color:var(--accent);background:var(--accent-soft);color:var(--accent); }
+    .q-nav-btn.wrong { border-color:var(--accent-danger);background:rgba(247,95,95,0.1);color:var(--accent-danger); }
+    .q-nav-btn.correct { border-color:var(--accent-success);background:rgba(79,206,142,0.1);color:var(--accent-success); }
+    .mcq-builder { margin-top:12px; }
+    .mcq-option-row { display:flex;align-items:center;gap:10px;margin-bottom:8px; }
+    .mcq-option-row input[type="text"] { flex:1; }
+    .mcq-option-row input[type="radio"] { width:18px;height:18px; }
+    .result-answer-review { background:var(--bg-card);border-radius:var(--radius);padding:16px;margin-bottom:12px;border:1px solid var(--border-soft); }
+    .result-answer-review.correct { border-color:var(--accent-success); }
+    .result-answer-review.wrong { border-color:var(--accent-danger); }
+    .submission-row { display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border-soft); }
+    .submission-row:last-child { border-bottom:none; }
+    /* ---- EXAM SCREEN STYLES ---- */
+    .exam-body {
+      flex: 1; overflow-y: auto; padding: 24px;
+      max-width: 800px; margin: 0 auto; width: 100%;
+    }
+    .question-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-lg);
+      padding: 28px 32px;
+      margin-bottom: 20px;
+    }
+    .question-num {
+      font-size: 0.82rem; font-weight: 600;
+      color: var(--accent); text-transform: uppercase;
+      letter-spacing: 0.06em; margin-bottom: 12px;
+    }
+    .question-text {
+      font-size: 1.15rem; font-weight: 700;
+      color: var(--text-primary); line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .options-list { display: flex; flex-direction: column; gap: 10px; }
+    .option-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 18px;
+      border: 2px solid var(--border-soft);
+      border-radius: var(--radius);
+      cursor: pointer; transition: var(--transition);
+      background: var(--bg-tertiary);
+      font-size: 0.95rem; color: var(--text-secondary);
+    }
+    .option-item:hover { border-color: var(--accent); color: var(--text-primary); background: var(--accent-soft); }
+    .option-item.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--text-primary); font-weight: 600; }
+    .option-item.correct { border-color: var(--accent-success); background: rgba(34,197,94,0.1); color: var(--accent-success); }
+    .option-item.wrong { border-color: var(--accent-danger); background: rgba(239,68,68,0.1); color: var(--accent-danger); }
+    .option-radio {
+      width: 20px; height: 20px; border-radius: 50%;
+      border: 2px solid var(--border); flex-shrink: 0;
+      transition: var(--transition);
+    }
+    .option-item.selected .option-radio { background: var(--accent); border-color: var(--accent); }
+    .option-item.correct .option-radio { background: var(--accent-success); border-color: var(--accent-success); }
+    .option-item.wrong .option-radio { background: var(--accent-danger); border-color: var(--accent-danger); }
+
+    /* ---- RESULT SCREEN ---- */
+    .result-screen {
+      min-height: 100vh; display: flex; align-items: center;
+      justify-content: center; padding: 40px 20px;
+      background: var(--bg-primary);
+    }
+    .result-inner {
+      max-width: 900px; width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-xl);
+      padding: 40px;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 28px; text-align: center;
+    }
+    .result-score-circle {
+      width: 140px; height: 140px; border-radius: 50%;
+      background: conic-gradient(var(--accent) var(--pct, 0deg), var(--border-soft) 0deg);
+      display: flex; align-items: center; justify-content: center;
+      position: relative; flex-shrink: 0;
+    }
+    .result-score-circle::before {
+      content: ''; position: absolute; inset: 14px;
+      border-radius: 50%; background: var(--bg-card);
+    }
+    .result-score-text {
+      position: relative; z-index: 1;
+      font-size: 1.5rem; font-weight: 900;
+    }
+    .result-stats-row {
+      display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;
+    }
+    .result-stat-card {
+      background: var(--bg-tertiary); border: 1px solid var(--border-soft);
+      border-radius: var(--radius); padding: 20px 24px;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      min-width: 110px;
+    }
+    .result-stat-icon { font-size: 1.6rem; }
+    .result-stat-value { font-size: 1.4rem; font-weight: 800; }
+    .result-stat-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
+    .result-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+    /* ---- REVIEW SECTION ---- */
+    #review-section { width: 100%; text-align: left; }
+    .review-card {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius); padding: 20px;
+      margin-bottom: 12px;
+    }
+    .review-card.correct { border-color: var(--accent-success); }
+    .review-card.wrong { border-color: var(--accent-danger); }
+    .review-q-num { font-size: 0.78rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; }
+    .review-q-text { font-size: 0.95rem; font-weight: 600; margin-bottom: 12px; }
+    .review-options { display: flex; flex-direction: column; gap: 6px; }
+    .review-option { padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.875rem; border: 1px solid var(--border-soft); }
+    .review-option.correct-ans { background: rgba(34,197,94,0.1); border-color: var(--accent-success); color: var(--accent-success); font-weight: 600; }
+    .review-option.user-wrong { background: rgba(239,68,68,0.1); border-color: var(--accent-danger); color: var(--accent-danger); }
+
+
+  .fab-create {
+    display: none;
+    position: fixed;
+    bottom: 90px; right: 16px;
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white; border: none;
+    box-shadow: 0 4px 16px rgba(79,142,247,0.5);
+    cursor: pointer;
+    align-items: center; justify-content: center;
+    z-index: 150; transition: var(--transition);
+  }
+  .fab-create:active { transform: scale(0.92); }
+  @media (max-width: 768px) {
+    .fab-create { display: flex; }
+    .desktop-create-btn { display: none !important; }
+    #tests-grid { padding-bottom: 70px !important; }
+  }
+  </style>
+</head>
+<body>
+<div id="app-root"></div>
+
+<!-- CREATE TEST MODAL -->
+<div class="modal-overlay" id="modal-create-test">
+  <div class="modal" style="max-width:800px">
+    <div class="modal-header"><div class="modal-title">Create Test / Quiz</div><button class="modal-close" onclick="closeModal('modal-create-test')">✕</button></div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="form-group"><label class="form-label">Test Title *</label><input type="text" id="t-title" placeholder="e.g. Java Mid Semester Quiz"/></div>
+        <div class="form-group"><label class="form-label">Subject</label>
+          <select id="t-subject"><option value="">Select Subject</option><option>DSA</option><option>Java</option><option>Python</option><option>DBMS</option><option>OS</option><option>CN</option><option>Web Dev</option><option>ML</option><option>Other</option></select></div>
+      </div>
+      <div class="form-group"><label class="form-label">Description</label><textarea id="t-desc" rows="2" placeholder="What is this test about?"></textarea></div>
+      <div class="grid-3">
+        <div class="form-group"><label class="form-label">Time Limit (minutes)</label><input type="number" id="t-time" value="30" min="5" max="180"/></div>
+        <div class="form-group"><label class="form-label">Pass Score (%)</label><input type="number" id="t-pass" value="60" min="1" max="100"/></div>
+        <div class="form-group"><label class="form-label">Target Year</label>
+          <select id="t-year"><option value="">All Years</option><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option></select></div>
+        <div class="form-group"><label class="form-label">⏳ Available For</label>
+          <select id="t-availability">
+            <option value="0">Always available</option>
+            <option value="1">1 day</option>
+            <option value="2">2 days</option>
+            <option value="3">3 days</option>
+            <option value="7">1 week</option>
+            <option value="14">2 weeks</option>
+            <option value="30">1 month</option>
+          </select></div>
+      </div>
+      <div class="separator"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div class="section-title">Questions</div>
+        <button class="btn btn-secondary btn-sm" onclick="addQuestion()"><i class="fa fa-plus"></i> Add Question</button>
+      </div>
+      <div id="questions-builder"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-create-test')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTest()"><i class="fa fa-save"></i> Save Test</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { requireAuth, getSidebarHTML, getLayoutHTML, toast, showLoading, openModal, closeModal, timeAgo, logout } from '../js/app.js?v=76';
+import { db, auth, collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp, getDocs, where, getDoc, doc, updateDoc, increment, deleteDoc } from '../js/app.js?v=76';
+
+window._logout = logout;
+window.openModal = openModal;
+window.closeModal = closeModal;
+
+let currentUser, currentUserData;
+let currentTest = null;
+let userAnswers = {};
+let examTimer = null;
+let timeLeft = 0;
+let questionsList = [];
+let qBuilderData = [];
+
+requireAuth((user, userData) => {
+  currentUser = user;
+  currentUserData = userData;
+
+  document.getElementById('app-root').innerHTML = getLayoutHTML('Tests & Exams', `
+    <div class="page-content">
+      <!-- LIST VIEW -->
+      <div class="tests-list-view" id="tests-list-view">
+        <div class="page-header">
+          <div><h1 class="page-title">Tests & Exams</h1><p class="page-subtitle">Practice, assess, and compete</p></div>
+          <button class="btn btn-primary desktop-create-btn" onclick="openModal('modal-create-test')"><i class="fa fa-plus"></i> Create Test</button>
+        </div>
+        <!-- FAB - mobile only -->
+        <button class="fab-create" onclick="openModal('modal-create-test')" title="Create Test">
+          <i class="fa fa-plus" style="font-size:1.3rem"></i>
+        </button>
+        <div class="tabs">
+          <button class="tab-btn active" onclick="switchTestTab('all',this)">All Tests</button>
+          <button class="tab-btn" onclick="switchTestTab('mine',this)">My Tests</button>
+          <button class="tab-btn" onclick="switchTestTab('attempted',this)">Attempted</button>
+          ${userData.role!=='student'?`<button class="tab-btn" onclick="switchTestTab('results',this)">View Results</button>`:''}
+        </div>
+        <div id="tests-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px"><div class="loading-spinner">Loading...</div></div>
+      </div>
+
+      <!-- EXAM VIEW -->
+      <div class="exam-view" id="exam-view">
+        <div class="exam-screen">
+          <div class="exam-header">
+            <div>
+              <div style="font-size:1.1rem;font-weight:800" id="exam-title">Loading...</div>
+              <div style="font-size:0.83rem;color:var(--text-secondary)" id="exam-subject"></div>
+            </div>
+            <div>
+              <div style="font-size:0.75rem;color:var(--text-muted);text-align:center;margin-bottom:4px">TIME LEFT</div>
+              <div class="exam-timer" id="exam-timer">00:00</div>
+            </div>
+          </div>
+          <div class="exam-progress"><div class="exam-progress-bar" id="exam-progress-bar" style="width:0%"></div></div>
+          <!-- Question Nav -->
+          <div class="card" style="margin-bottom:16px">
+            <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px">Jump to question:</div>
+            <div class="question-nav" id="question-nav"></div>
+            <div style="display:flex;gap:10px;font-size:0.75rem;color:var(--text-muted);margin-top:8px;flex-wrap:wrap">
+              <span><span style="display:inline-block;width:12px;height:12px;background:var(--accent-soft);border:2px solid var(--accent);border-radius:3px;margin-right:4px"></span>Current</span>
+              <span><span style="display:inline-block;width:12px;height:12px;background:rgba(79,206,142,0.1);border:2px solid var(--accent-success);border-radius:3px;margin-right:4px"></span>Answered</span>
+              <span><span style="display:inline-block;width:12px;height:12px;background:var(--bg-card);border:2px solid var(--border);border-radius:3px;margin-right:4px"></span>Unanswered</span>
+            </div>
+          </div>
+          <!-- Question Display -->
+          <div class="exam-body">
+            <div id="question-display"></div>
+            <!-- Navigation Buttons -->
+            <div style="display:flex;justify-content:space-between;margin-top:20px">
+            <button class="btn btn-secondary" id="prev-btn" onclick="prevQuestion()"><i class="fa fa-arrow-left"></i> Previous</button>
+            <button class="btn btn-danger" onclick="confirmSubmitExam()"><i class="fa fa-flag-checkered"></i> Submit Exam</button>
+            <button class="btn btn-primary" id="next-btn" onclick="nextQuestion()">Next <i class="fa fa-arrow-right"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RESULT VIEW -->
+      <div class="result-view" id="result-view">
+        <div class="result-screen">
+          <div class="result-inner">
+            <div id="result-score-circle-wrap"></div>
+            <div>
+              <div style="font-size:1.6rem;font-weight:800;margin-bottom:8px;text-align:center" id="result-heading">Test Complete!</div>
+              <div style="color:var(--text-secondary);text-align:center" id="result-subheading"></div>
+            </div>
+            <div class="result-stats-row" id="result-stats-grid"></div>
+            <div class="result-actions">
+              <button class="btn btn-primary" onclick="showTestsList()"><i class="fa fa-list"></i> Back to Tests</button>
+              <button class="btn btn-secondary" onclick="reviewAnswers()"><i class="fa fa-eye"></i> Review Answers</button>
+            </div>
+            <div id="review-section" style="display:none;width:100%;margin-top:8px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `, userData.role);
+
+  document.getElementById('sidebar-nav').innerHTML = getSidebarHTML(userData.role);
+  loadTests('all');
+  // Init question builder
+  addQuestion();
+});
+
+function showTestsList() {
+  document.getElementById('tests-list-view').classList.remove('hidden');
+  document.getElementById('exam-view').classList.remove('active');
+  document.getElementById('result-view').classList.remove('active');
+  clearInterval(examTimer);
+  currentTest = null;
+  userAnswers = {};
+  questionsList = [];
+}
+window.showTestsList = showTestsList;
+
+function switchTestTab(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadTests(tab);
+}
+window.switchTestTab = switchTestTab;
+
+async function loadTests(tab) {
+  const grid = document.getElementById('tests-grid');
+  grid.innerHTML = '<div class="loading-spinner">Loading...</div>';
+  try {
+    // Use simple queries without compound index requirements - filter client-side
+    const snap = await getDocs(query(collection(db,'tests'), orderBy('createdAt','desc'), limit(50)));
+    // Check both userId and studentId fields to handle old + new submissions
+    const [attemptedSnap1, attemptedSnap2] = await Promise.all([
+      getDocs(query(collection(db,'testSubmissions'), where('userId','==',currentUser.uid))),
+      getDocs(query(collection(db,'testSubmissions'), where('studentId','==',currentUser.uid)))
+    ]);
+    const attemptedIds = new Set([
+      ...attemptedSnap1.docs.map(d => d.data().testId),
+      ...attemptedSnap2.docs.map(d => d.data().testId)
+    ]);
+
+    grid.innerHTML = '';
+
+    let docs = snap.docs;
+    // Filter client-side based on tab
+    if (tab === 'mine') docs = docs.filter(d => d.data().createdBy === currentUser.uid);
+    else if (tab === 'results') {
+      // Show all tests with their submission counts - faculty/admin view
+      // docs stays as all tests, we'll show submission counts per test
+    }
+    else if (tab === 'attempted') docs = docs.filter(d => attemptedIds.has(d.id));
+
+    if (!docs.length) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-icon">📝</div><div class="empty-state-title">No tests found</div><div class="empty-state-desc">${tab==='all'?'Create the first test!':'No tests in this category yet.'}</div></div>`;
+      return;
+    }
+
+    docs.forEach(d => {
+      const t = d.data();
+      const attempted = attemptedIds.has(d.id);
+      // Check if test has expired
+      const expiresAt = t.expiresAt?.toDate ? t.expiresAt.toDate() : null;
+      const isExpired = expiresAt && expiresAt < new Date();
+      const now = new Date();
+      grid.innerHTML += `
+        <div class="test-card">
+          <div class="test-card-header">
+            <div>
+              <div class="test-title">${t.title}</div>
+              <div class="test-desc">${t.description?.substring(0,80)||''}</div>
+            </div>
+            <span class="test-status live">Active</span>
+          </div>
+          ${t.subject?`<span class="tag">${t.subject}</span>`:''}
+          ${t.year?`<span class="tag" style="margin-left:4px">${t.year}</span>`:''}
+          <div class="test-info">
+            <div class="test-info-item"><i class="fa fa-clock"></i> ${t.timeLimit||30} min</div>
+            <div class="test-info-item"><i class="fa fa-question-circle"></i> ${t.questions?.length||0} questions</div>
+            <div class="test-info-item"><i class="fa fa-star"></i> Pass: ${t.passScore||60}%</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:14px">
+            ${attempted?
+              `<div style="display:flex;gap:8px;flex:1">
+                <button class="btn btn-success" style="flex:1" disabled><i class="fa fa-check"></i> Attempted</button>
+                <button class="btn btn-secondary" onclick="viewMyResult('${d.id}')" title="View my result"><i class="fa fa-chart-pie"></i> My Result</button>
+               </div>`:
+              isExpired ?
+              `<button class="btn btn-secondary btn-full" disabled style="opacity:0.5"><i class="fa fa-lock"></i> Exam Closed</button>` :
+              `<button class="btn btn-primary btn-full" onclick="startExam('${d.id}')"><i class="fa fa-play"></i> Start Exam</button>`
+            }
+            ${(t.createdBy===currentUser.uid||currentUserData.role==='admin')?`<button class="btn btn-secondary btn-icon" onclick="deleteTest('${d.id}')"><i class="fa fa-trash"></i></button>`:''}
+            ${(currentUserData.role==='faculty'||currentUserData.role==='admin')?`<button class="btn btn-secondary btn-icon" onclick="viewSubmissions('${d.id}')"><i class="fa fa-chart-bar"></i></button>`:''}
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:8px">
+            By ${t.createdByName||'Unknown'} • ${timeAgo(t.createdAt?.toDate())}
+            ${expiresAt && !isExpired ? `<span style="color:var(--accent-warn);margin-left:8px">⏰ Closes ${timeAgo(expiresAt)}</span>` : ''}
+            ${isExpired ? `<span style="color:var(--accent-danger);margin-left:8px">🔒 Closed</span>` : ''}
+          </div>
+        </div>`;
+    });
+  } catch(e) { grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-title">Error loading tests</div></div>`; console.error(e); }
+}
+
+async function startExam(testId) {
+  const testDoc = await getDoc(doc(db,'tests',testId));
+  if (!testDoc.exists()) { toast('Test not found','error'); return; }
+  currentTest = { id: testId, ...testDoc.data() };
+  questionsList = currentTest.questions || [];
+  if (!questionsList.length) { toast('This test has no questions','error'); return; }
+  userAnswers = {};
+  timeLeft = (currentTest.timeLimit || 30) * 60;
+
+  document.getElementById('tests-list-view').classList.add('hidden');
+  document.getElementById('exam-view').classList.add('active');
+  document.getElementById('exam-title').textContent = currentTest.title;
+  document.getElementById('exam-subject').textContent = currentTest.subject || '';
+
+  renderQuestionNav();
+  showQuestion(0);
+  startTimer();
+}
+window.startExam = startExam;
+
+let currentQuestionIndex = 0;
+
+function renderQuestionNav() {
+  const nav = document.getElementById('question-nav');
+  nav.innerHTML = '';
+  questionsList.forEach((q,i) => {
+    const btn = document.createElement('div');
+    btn.className = `q-nav-btn ${i===currentQuestionIndex?'current':''} ${userAnswers[i]!==undefined?'answered':''}`;
+    btn.textContent = i+1;
+    btn.onclick = () => showQuestion(i);
+    btn.id = `q-nav-${i}`;
+    nav.appendChild(btn);
+  });
+}
+
+function showQuestion(index) {
+  currentQuestionIndex = index;
+  const q = questionsList[index];
+  const progress = ((index+1)/questionsList.length)*100;
+  document.getElementById('exam-progress-bar').style.width = progress+'%';
+
+  // Update nav
+  document.querySelectorAll('.q-nav-btn').forEach((b,i) => {
+    b.className = `q-nav-btn ${i===index?'current':''} ${userAnswers[i]!==undefined?'answered':''}`;
+  });
+
+  document.getElementById('prev-btn').disabled = index === 0;
+  document.getElementById('next-btn').textContent = index===questionsList.length-1 ? 'Review' : 'Next ';
+
+  document.getElementById('question-display').innerHTML = `
+    <div class="question-card">
+      <div class="question-num">Question ${index+1} of ${questionsList.length}</div>
+      <div class="question-text">${q.question}</div>
+      <div class="options-list">
+        ${q.options.map((opt,oi) => `
+          <div class="option-item ${userAnswers[index]===oi?'selected':''}" onclick="selectOption(${index},${oi})">
+            <div class="option-radio"></div>
+            <span>${String.fromCharCode(65+oi)}. ${opt}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function selectOption(qIndex, optIndex) {
+  userAnswers[qIndex] = optIndex;
+  renderQuestionNav();
+  // Re-render current question options
+  document.querySelectorAll('.option-item').forEach((el,i) => {
+    el.classList.toggle('selected', i===optIndex);
+    el.querySelector('.option-radio').style.background = i===optIndex ? 'var(--accent)' : '';
+  });
+}
+window.selectOption = selectOption;
+
+function prevQuestion() { if (currentQuestionIndex > 0) showQuestion(currentQuestionIndex-1); }
+function nextQuestion() {
+  if (currentQuestionIndex < questionsList.length-1) showQuestion(currentQuestionIndex+1);
+  else confirmSubmitExam();
+}
+window.prevQuestion = prevQuestion;
+window.nextQuestion = nextQuestion;
+
+function startTimer() {
+  clearInterval(examTimer);
+  const timerEl = document.getElementById('exam-timer');
+  examTimer = setInterval(() => {
+    timeLeft--;
+    const min = Math.floor(timeLeft/60);
+    const sec = timeLeft%60;
+    timerEl.textContent = `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    if (timeLeft <= 300) timerEl.className = 'exam-timer warning';
+    if (timeLeft <= 60) timerEl.className = 'exam-timer danger';
+    if (timeLeft <= 0) { clearInterval(examTimer); submitExam(); }
+  }, 1000);
+}
+
+function confirmSubmitExam() {
+  const answered = Object.keys(userAnswers).length;
+  const total = questionsList.length;
+  if (confirm(`Submit exam? You've answered ${answered}/${total} questions.`)) submitExam();
+}
+window.confirmSubmitExam = confirmSubmitExam;
+
+async function submitExam() {
+  clearInterval(examTimer);
+  let correct = 0;
+  const reviewData = questionsList.map((q,i) => {
+    const isCorrect = userAnswers[i] === q.correctIndex;
+    if (isCorrect) correct++;
+    return { question: q.question, options: q.options, correctIndex: q.correctIndex, userAnswer: userAnswers[i], isCorrect };
+  });
+
+  const total = questionsList.length;
+  const score = Math.round((correct/total)*100);
+  const passed = score >= (currentTest.passScore || 60);
+  const timeTaken = (currentTest.timeLimit*60 - timeLeft);
+
+  try {
+    await addDoc(collection(db,'testSubmissions'), {
+      testId: currentTest.id, testTitle: currentTest.title,
+      userId: currentUser.uid, studentId: currentUser.uid, studentName: currentUserData.name,
+      score, correct, total, passed, timeTaken,
+      answers: reviewData, submittedAt: serverTimestamp()
+    });
+    await updateDoc(doc(db,'users',currentUser.uid), { reputation: increment(passed?10:2) });
+  } catch(e) { console.error(e); }
+
+  // Show result
+  document.getElementById('exam-view').classList.remove('active');
+  document.getElementById('result-view').classList.add('active');
+  document.getElementById('review-section').style.display = 'none';
+  document.getElementById('result-heading').textContent = passed ? '🎉 Congratulations! Passed!' : '📚 Better Luck Next Time';
+  document.getElementById('result-subheading').textContent = passed ? `You scored ${score}% and passed the exam!` : `You scored ${score}%. Need ${currentTest.passScore||60}% to pass.`;
+  document.getElementById('result-score-circle-wrap').innerHTML = `
+    <div class="result-score-circle" style="--pct:${score*3.6}deg">
+      <div class="result-score-text">${score}%</div>
+    </div>`;
+  document.getElementById('result-stats-grid').innerHTML = `
+    <div class="result-stat-card"><div class="result-stat-icon">✅</div><div class="result-stat-value" style="color:var(--accent-success)">${correct}</div><div class="result-stat-label">Correct</div></div>
+    <div class="result-stat-card"><div class="result-stat-icon">❌</div><div class="result-stat-value" style="color:var(--accent-danger)">${total-correct}</div><div class="result-stat-label">Wrong</div></div>
+    <div class="result-stat-card"><div class="result-stat-icon">⏱️</div><div class="result-stat-value">${Math.floor(timeTaken/60)}m ${timeTaken%60}s</div><div class="result-stat-label">Time Taken</div></div>
+    <div class="result-stat-card"><div class="result-stat-icon">⭐</div><div class="result-stat-value" style="color:var(--accent-warn)">${passed?'+10':'+2'}</div><div class="result-stat-label">Rep Earned</div></div>`;
+  window._reviewData = reviewData;
+}
+
+function reviewAnswers() {
+  const section = document.getElementById('review-section');
+  const isHidden = section.style.display === 'none' || !section.style.display;
+  section.style.display = isHidden ? 'block' : 'none';
+  // Update button text
+  const reviewBtn = document.querySelector('.result-actions .btn-secondary');
+  if (reviewBtn) reviewBtn.innerHTML = isHidden ? '<i class="fa fa-eye-slash"></i> Hide Review' : '<i class="fa fa-eye"></i> Review Answers';
+
+  if (isHidden) {
+    section.innerHTML = `
+      <div style="font-size:1.1rem;font-weight:800;margin-bottom:16px;padding-top:16px;border-top:1px solid var(--border-soft)">
+        📋 Answer Review
+      </div>`;
+    (window._reviewData||[]).forEach((r,i) => {
+      section.innerHTML += `
+        <div class="review-card ${r.isCorrect?'correct':'wrong'}">
+          <div class="review-q-num">Question ${i+1} ${r.isCorrect ? '✅' : '❌'}</div>
+          <div class="review-q-text">${r.question}</div>
+          <div class="review-options">
+            ${r.options.map((opt,oi) => {
+              let cls = '';
+              if (oi === r.correctIndex) cls = 'correct-ans';
+              else if (oi === r.userAnswer && !r.isCorrect) cls = 'user-wrong';
+              const suffix = oi===r.correctIndex ? ' ✓ Correct answer' : (oi===r.userAnswer&&!r.isCorrect?' ← Your answer':'');
+              return `<div class="review-option ${cls}">${String.fromCharCode(65+oi)}. ${opt}${suffix}</div>`;
+            }).join('')}
+          </div>
+        </div>`;
+    });
+  }
+}
+window.reviewAnswers = reviewAnswers;
+
+
+async function viewMyResult(testId) {
+  try {
+    // Get student's submission for this test
+    const snap = await getDocs(query(collection(db,'testSubmissions'),
+      where('testId','==',testId), where('userId','==',currentUser.uid)));
+
+    if (snap.empty) {
+      // Try with studentId field for older submissions
+      const snap2 = await getDocs(query(collection(db,'testSubmissions'),
+        where('testId','==',testId), where('studentId','==',currentUser.uid)));
+      if (snap2.empty) { toast('No result found for this test','error'); return; }
+      showMyResultModal(snap2.docs[0].data(), testId);
+    } else {
+      showMyResultModal(snap.docs[0].data(), testId);
+    }
+  } catch(e) { console.error(e); toast('Failed to load result','error'); }
+}
+
+async function showMyResultModal(s, testId) {
+  const testDoc = await getDoc(doc(db,'tests',testId));
+  const testData = testDoc.data();
+  const questions = testData ? (testData.questions || []) : [];
+  const score = s.score || Math.round((s.correct||0)/(s.total||1)*100);
+  const passed = s.passed || score >= (testData ? (testData.passScore||60) : 60);
+  const timeTaken = s.timeTaken || 0;
+  const scoreColor = passed ? 'var(--accent-success)' : 'var(--accent-danger)';
+  const statusText = passed ? '🎉 Passed' : '📚 Failed';
+
+  // Build answer review HTML
+  let reviewHTML = '';
+  if (s.answers && s.answers.length) {
+    reviewHTML = '<div style="font-size:1rem;font-weight:700;margin-bottom:12px">📋 Answer Review</div>';
+    s.answers.forEach(function(ans, i) {
+      // answers is stored as array of {question, options, correctIndex, userAnswer, isCorrect}
+      const q = ans; // the stored answer object has all info
+      const isCorrect = ans.isCorrect;
+      const userAns = ans.userAnswer;
+      const cardBorder = isCorrect ? 'var(--accent-success)' : 'var(--accent-danger)';
+      let optHTML = '';
+      (ans.options || []).forEach(function(opt, oi) {
+        let bg = 'transparent';
+        let color = 'var(--text-secondary)';
+        let suffix = '';
+        if (oi === q.correctIndex) { bg = 'rgba(34,197,94,0.1)'; color = 'var(--accent-success)'; suffix = ' ✓ Correct answer'; }
+        else if (oi === userAns && !isCorrect) { bg = 'rgba(239,68,68,0.1)'; color = 'var(--accent-danger)'; suffix = ' ← Your answer'; }
+        optHTML += '<div style="padding:8px 12px;border-radius:6px;font-size:0.875rem;margin-bottom:4px;background:' + bg + ';color:' + color + '">' + String.fromCharCode(65+oi) + '. ' + opt + suffix + '</div>';
+      });
+      reviewHTML += '<div style="background:var(--bg-tertiary);border:1px solid ' + cardBorder + ';border-radius:var(--radius);padding:16px;margin-bottom:10px">'
+        + '<div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);margin-bottom:6px">Q' + (i+1) + ' — ' + (isCorrect ? '✅ Correct' : '❌ Wrong') + '</div>'
+        + '<div style="font-size:0.95rem;font-weight:600;margin-bottom:12px">' + ans.question + '</div>'
+        + '<div>' + optHTML + '</div>'
+        + '</div>';
+    });
+  } else {
+    reviewHTML = '<p style="color:var(--text-muted);text-align:center;padding:16px">Detailed answer review not available for this submission.</p>';
+  }
+
+  const submittedOn = s.submittedAt && s.submittedAt.toDate ? s.submittedAt.toDate().toLocaleString() : 'N/A';
+
+  document.getElementById('my-result-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay active';
+  modal.id = 'my-result-modal';
+  modal.innerHTML = '<div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">'
+    + '<div class="modal-header">'
+    + '<h2>📊 My Result — ' + (testData ? testData.title : 'Test') + '</h2>'
+    + '<button class="modal-close" id="close-result-btn">✕</button>'
+    + '</div>'
+    + '<div class="modal-body">'
+    + '<div style="display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap;padding:20px;background:var(--bg-tertiary);border-radius:var(--radius);margin-bottom:20px">'
+    + '<div style="text-align:center">'
+    + '<div style="font-size:3rem;font-weight:900;color:' + scoreColor + '">' + score + '%</div>'
+    + '<div style="font-size:1.1rem;font-weight:700">' + statusText + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">'
+    + '<div style="text-align:center;padding:12px 16px;background:var(--bg-card);border-radius:var(--radius-sm)"><div style="font-size:1.4rem;font-weight:800;color:var(--accent-success)">' + (s.correct||0) + '</div><div style="font-size:0.75rem;color:var(--text-muted)">Correct</div></div>'
+    + '<div style="text-align:center;padding:12px 16px;background:var(--bg-card);border-radius:var(--radius-sm)"><div style="font-size:1.4rem;font-weight:800;color:var(--accent-danger)">' + ((s.total||0)-(s.correct||0)) + '</div><div style="font-size:0.75rem;color:var(--text-muted)">Wrong</div></div>'
+    + '<div style="text-align:center;padding:12px 16px;background:var(--bg-card);border-radius:var(--radius-sm)"><div style="font-size:1.4rem;font-weight:800">' + Math.floor(timeTaken/60) + 'm ' + (timeTaken%60) + 's</div><div style="font-size:0.75rem;color:var(--text-muted)">Time Taken</div></div>'
+    + '<div style="text-align:center;padding:12px 16px;background:var(--bg-card);border-radius:var(--radius-sm)"><div style="font-size:1.4rem;font-weight:800;color:var(--accent-warn)">' + (passed?'+10':'+2') + '</div><div style="font-size:0.75rem;color:var(--text-muted)">Rep Earned</div></div>'
+    + '</div></div>'
+    + reviewHTML
+    + '<div style="font-size:0.78rem;color:var(--text-muted);text-align:center;margin-top:12px">Submitted on ' + submittedOn + '</div>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+  // Add close button handler after appending to DOM
+  const closeBtn = document.getElementById('close-result-btn');
+  if (closeBtn) closeBtn.onclick = function() { document.getElementById('my-result-modal').remove(); };
+}
+window.viewMyResult = viewMyResult;
+
+async function viewSubmissions(testId) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay active';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:700px">
+      <div class="modal-header"><div class="modal-title">Test Submissions</div><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+      <div class="modal-body" id="submissions-modal-body"><div class="loading-spinner"></div></div>
+    </div>`;
+  document.body.appendChild(modal);
+  try {
+    // Simple query - no compound index needed, sort client-side
+    const snap = await getDocs(query(collection(db,'testSubmissions'), where('testId','==',testId)));
+    const body = document.getElementById('submissions-modal-body');
+    if (snap.empty) { body.innerHTML = '<div class="empty-state"><div class="empty-state-title">No submissions yet</div></div>'; return; }
+    // Sort by score descending client-side
+    const sortedDocs = [...snap.docs].sort((a,b) => (b.data().score||0) - (a.data().score||0));
+    const avg = snap.docs.reduce((s,d)=>s+(d.data().score||0),0)/snap.size;
+    body.innerHTML = `
+      <div class="grid-3" style="margin-bottom:20px">
+        <div class="stat-card blue"><div class="stat-value">${snap.size}</div><div class="stat-label">Submissions</div></div>
+        <div class="stat-card green"><div class="stat-value">${Math.round(avg)}%</div><div class="stat-label">Avg Score</div></div>
+        <div class="stat-card orange"><div class="stat-value">${snap.docs.filter(d=>d.data().passed).length}</div><div class="stat-label">Passed</div></div>
+      </div>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>Student</th><th>Score</th><th>Correct</th><th>Time</th><th>Status</th><th>Date</th></tr></thead>
+          <tbody>${sortedDocs.map(d => {
+            const s = d.data();
+            return `<tr>
+              <td>${s.studentName}</td>
+              <td><strong>${s.score}%</strong></td>
+              <td>${s.correct}/${s.total}</td>
+              <td>${Math.floor((s.timeTaken||0)/60)}m ${(s.timeTaken||0)%60}s</td>
+              <td><span class="status-badge ${s.passed?'answered':'open'}">${s.passed?'Passed':'Failed'}</span></td>
+              <td>${s.submittedAt?.toDate()?.toLocaleDateString()||''}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>`;
+  } catch(e) { console.error(e); }
+}
+window.viewSubmissions = viewSubmissions;
+
+async function deleteTest(testId) {
+  if (!confirm('Delete this test? All submissions will be lost.')) return;
+  await deleteDoc(doc(db,'tests',testId));
+  toast('Test deleted','success');
+  loadTests('all');
+}
+window.deleteTest = deleteTest;
+
+// ---- QUESTION BUILDER ----
+function addQuestion() {
+  const idx = qBuilderData.length;
+  qBuilderData.push({ question:'', options:['','','',''], correctIndex:0 });
+  renderQuestionBuilder();
+}
+window.addQuestion = addQuestion;
+
+function removeQuestion(idx) {
+  qBuilderData.splice(idx,1);
+  renderQuestionBuilder();
+}
+window.removeQuestion = removeQuestion;
+
+function renderQuestionBuilder() {
+  const container = document.getElementById('questions-builder');
+  if (!container) return;
+  container.innerHTML = '';
+  qBuilderData.forEach((q,idx) => {
+    container.innerHTML += `
+      <div style="background:var(--bg-card);border:1px solid var(--border-soft);border-radius:var(--radius);padding:16px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:0.85rem;font-weight:700;color:var(--accent)">Question ${idx+1}</div>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="removeQuestion(${idx})"><i class="fa fa-trash"></i></button>
+        </div>
+        <div class="form-group"><input type="text" placeholder="Enter your question..." value="${q.question}" oninput="updateQuestion(${idx},'question',this.value)"/></div>
+        <div class="mcq-builder">
+          <div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);margin-bottom:8px">OPTIONS (select correct answer)</div>
+          ${q.options.map((opt,oi) => `
+            <div class="mcq-option-row">
+              <input type="radio" name="correct-${idx}" ${q.correctIndex===oi?'checked':''} onchange="updateQuestion(${idx},'correctIndex',${oi})"/>
+              <input type="text" placeholder="Option ${String.fromCharCode(65+oi)}" value="${opt}" oninput="updateOption(${idx},${oi},this.value)"/>
+              <span style="font-size:0.75rem;color:var(--text-muted);width:20px">${String.fromCharCode(65+oi)}</span>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  });
+}
+
+function updateQuestion(idx, field, val) { if(qBuilderData[idx]) qBuilderData[idx][field] = isNaN(val)?val:parseInt(val); }
+function updateOption(idx, oi, val) { if(qBuilderData[idx]) qBuilderData[idx].options[oi] = val; }
+window.updateQuestion = updateQuestion;
+window.updateOption = updateOption;
+
+async function saveTest() {
+  const title = document.getElementById('t-title').value.trim();
+  if (!title) { toast('Enter test title','error'); return; }
+  if (qBuilderData.length === 0) { toast('Add at least one question','error'); return; }
+  // Validate all questions
+  for (let i=0;i<qBuilderData.length;i++) {
+    const q = qBuilderData[i];
+    if (!q.question.trim()) { toast(`Question ${i+1} is empty`,'error'); return; }
+    if (q.options.some(o=>!o.trim())) { toast(`Fill all options for Q${i+1}`,'error'); return; }
+  }
+  try {
+    showLoading(true);
+    await addDoc(collection(db,'tests'), {
+      title, description: document.getElementById('t-desc').value.trim(),
+      subject: document.getElementById('t-subject').value,
+      timeLimit: parseInt(document.getElementById('t-time').value) || 30,
+      passScore: parseInt(document.getElementById('t-pass').value) || 60,
+      year: document.getElementById('t-year').value,
+      questions: qBuilderData,
+      createdBy: currentUser.uid, createdByName: currentUserData.name,
+      expiresAt: expiresAt ? expiresAt : null,
+      submissionsCount: 0, createdAt: serverTimestamp()
+    });
+    closeModal('modal-create-test');
+    showLoading(false);
+    qBuilderData = [];
+    toast('Test created!','success');
+    loadTests('all');
+  } catch(e) { showLoading(false); toast(e.message,'error'); }
+}
+window.saveTest = saveTest;
+
+</script>
+</body>
+</html>

@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Communities — CampusConnect</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css"/>
+  <style>
+    .community-header { display:flex; align-items:center; gap:14px; padding:16px; background:linear-gradient(135deg,rgba(79,142,247,0.12),rgba(124,92,252,0.08)); border-radius:var(--radius-lg); border:1px solid rgba(79,142,247,0.2); margin-bottom:16px; }
+    .community-header-icon { width:48px;height:48px;flex-shrink:0;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:1.4rem; background:linear-gradient(135deg,var(--accent),var(--accent2)); }
+    .post-detail { max-width:700px; }
+    .comment-card { background:var(--bg-secondary);border-radius:var(--radius-sm);padding:14px;margin-top:10px; }
+    .comment-header { display:flex;align-items:center;gap:10px;margin-bottom:8px; }
+    .comment-avatar { width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;color:#fff; }
+    .community-view { display:none; }
+    .community-view.active { display:block; }
+    .list-view { display:none; }
+    .list-view.active { display:block; }
+    .post-view { display:none; }
+    .post-view.active { display:block; }
+    .breadcrumb { display:flex;align-items:center;gap:8px;font-size:0.83rem;color:var(--text-muted);margin-bottom:20px; }
+    .breadcrumb span { color:var(--accent);cursor:pointer; }
+    .breadcrumb span:hover { text-decoration:underline; }
+    .member-count-badge { display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--accent-soft);color:var(--accent);border-radius:var(--radius-full);font-size:0.75rem;font-weight:600; }
+    .join-btn.joined { background:rgba(79,206,142,0.1);color:var(--accent-success);border-color:rgba(79,206,142,0.3); }
+    .tag-input-container { display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm); }
+    .tag-chip { display:flex;align-items:center;gap:4px;padding:3px 10px;background:var(--accent-soft);color:var(--accent);border-radius:var(--radius-full);font-size:0.78rem; }
+    .tag-chip button { background:none;border:none;color:var(--accent);cursor:pointer;padding:0;font-size:0.7rem; }
+    .tag-input { border:none;background:none;color:var(--text-primary);font-size:0.85rem;flex:1;min-width:80px;outline:none; }
+  
+  .fab-community {
+    display: none;
+    position: fixed;
+    bottom: 90px; right: 16px;
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white; border: none;
+    box-shadow: 0 4px 16px rgba(79,142,247,0.5);
+    cursor: pointer;
+    align-items: center; justify-content: center;
+    z-index: 150; transition: var(--transition);
+  }
+  .fab-community:active { transform: scale(0.92); }
+
+  @media (max-width: 768px) {
+    .fab-community { display: flex; }
+    .desktop-create-comm-btn { display: none !important; }
+
+    /* Community cards - proper mobile layout */
+    #communities-grid { 
+      grid-template-columns: 1fr 1fr !important; 
+      gap: 10px !important;
+      padding-bottom: 70px !important;
+    }
+    .community-card { padding: 12px !important; }
+    .community-icon { font-size: 1.4rem !important; margin-bottom: 8px !important; }
+    .community-name { font-size: 0.85rem !important; margin-bottom: 4px !important; }
+    .community-desc { font-size: 0.75rem !important; margin-bottom: 8px !important; -webkit-line-clamp: 2 !important; }
+    .community-stats { font-size: 0.7rem !important; gap: 8px !important; flex-wrap: wrap !important; }
+    .community-card .btn { font-size: 0.75rem !important; padding: 6px 10px !important; margin-top: 8px !important; }
+
+    /* Tabs 2x2 grid on mobile */
+    .tabs { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; background: none !important; border: none !important; padding: 0 !important; }
+    .tab-btn { font-size: 0.78rem !important; padding: 8px 6px !important; text-align: center !important; border-radius: 8px !important; border: 1px solid var(--border-soft) !important; }
+    .tab-btn.active { background: var(--accent) !important; color: white !important; border-color: var(--accent) !important; }
+  }
+</style>
+</head>
+<body>
+<div id="app-root"></div>
+
+<!-- CREATE COMMUNITY MODAL -->
+<div class="modal-overlay" id="modal-create-community">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Create Community</div><button class="modal-close" onclick="closeModal('modal-create-community')">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Community Name</label><input type="text" id="new-comm-name" placeholder="e.g. Java Programming Community"/></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea id="new-comm-desc" rows="3" placeholder="What is this community about?"></textarea></div>
+      <div class="form-group"><label class="form-label">Icon (Emoji)</label><input type="text" id="new-comm-icon" placeholder="💻" maxlength="4"/></div>
+      <div class="form-group"><label class="form-label">Category</label>
+        <select id="new-comm-category">
+          <option>Academic</option><option>Programming</option><option>Placement</option><option>Internship</option><option>Research</option><option>Hobby</option><option>Year Group</option><option>Department</option></select></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modal-create-community')">Cancel</button><button class="btn btn-primary" onclick="createCommunity()"><i class="fa fa-plus"></i> Create</button></div>
+  </div>
+</div>
+
+<!-- CREATE POST MODAL -->
+<div class="modal-overlay" id="modal-create-post">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Create Post</div><button class="modal-close" onclick="closeModal('modal-create-post')">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Post Title</label><input type="text" id="new-post-title" placeholder="What's on your mind?"/></div>
+      <div class="form-group"><label class="form-label">Content</label><textarea id="new-post-content" rows="6" placeholder="Share details, ideas, questions..."></textarea></div>
+      <div class="form-group"><label class="form-label">Tags <span style="color:var(--text-muted);font-weight:400">(press Enter to add)</span></label>
+        <div class="tag-input-container" id="tag-input-container">
+          <input type="text" class="tag-input" id="tag-input-field" placeholder="Add tags..." onkeydown="handleTagInput(event)"/>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modal-create-post')">Cancel</button><button class="btn btn-primary" onclick="createPost()"><i class="fa fa-paper-plane"></i> Post</button></div>
+  </div>
+</div>
+
+<script type="module">
+import { requireAuth, getSidebarHTML, getLayoutHTML, toast, showLoading, openModal, closeModal, timeAgo, logout } from '../js/app.js?v=76';
+import { db, auth, collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp, getDocs, where, getDoc, doc, updateDoc, increment, arrayUnion, arrayRemove, deleteDoc } from '../js/app.js?v=76';
+
+window._logout = logout;
+window.openModal = openModal;
+window.closeModal = closeModal;
+
+let currentUserData, currentUser;
+let currentCommunityId = null;
+let currentPostId = null;
+let tags = [];
+
+requireAuth((user, userData) => {
+  currentUser = user;
+  currentUserData = userData;
+
+  document.getElementById('app-root').innerHTML = getLayoutHTML('Communities', `
+    <div class="page-content">
+      <!-- LIST VIEW -->
+      <div class="list-view active" id="list-view">
+        <div class="page-header">
+          <div><h1 class="page-title">Communities</h1><p class="page-subtitle">Join groups to discuss, share, and learn together</p></div>
+          <button class="btn btn-primary desktop-create-comm-btn" onclick="openModal('modal-create-community')"><i class="fa fa-plus"></i> Create Community</button>
+        </div>
+        <button class="fab-community" onclick="openModal('modal-create-community')" title="Create Community">
+          <i class="fa fa-plus" style="font-size:1.3rem"></i>
+        </button>
+        <div class="tabs">
+          <button class="tab-btn active" onclick="switchCommTab('all',this)">All Communities</button>
+          <button class="tab-btn" onclick="switchCommTab('joined',this)">My Communities</button>
+          <button class="tab-btn" onclick="switchCommTab('year',this)">Year Groups</button>
+          <button class="tab-btn" onclick="switchCommTab('dept',this)">Department</button>
+        </div>
+        <div class="grid-auto" id="communities-grid">
+          <div class="loading-spinner">Loading...</div>
+        </div>
+      </div>
+
+      <!-- COMMUNITY VIEW -->
+      <div class="community-view" id="community-view">
+        <div class="breadcrumb"><span onclick="showListView()">Communities</span> / <span id="bc-comm-name">Community</span></div>
+        <div class="community-header" id="comm-header"></div>
+        <div class="section-header">
+          <div><div class="section-title">Posts</div></div>
+          <button class="btn btn-primary desktop-post-btn" onclick="openModal('modal-create-post')"><i class="fa fa-plus"></i> New Post</button>
+        </div>
+        <div id="posts-list" style="display:flex;flex-direction:column;gap:12px"></div>
+      </div>
+
+      <!-- POST DETAIL VIEW -->
+      <div class="post-view" id="post-view">
+        <div class="breadcrumb">
+          <span onclick="showListView()">Communities</span> / 
+          <span id="bc-comm-name2" onclick="showCommunityView()">Community</span> / 
+          Post
+        </div>
+        <div id="post-detail-content"></div>
+        <div class="card" style="margin-top:20px">
+          <div class="card-title" style="margin-bottom:16px" id="comments-title">Comments</div>
+          <div style="display:flex;gap:10px;margin-bottom:16px">
+            <div class="comment-avatar" style="flex-shrink:0;margin-top:4px">${userData.name.charAt(0)}</div>
+            <div style="flex:1">
+              <textarea id="comment-input" rows="2" placeholder="Write a comment..." style="resize:none"></textarea>
+              <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="submitComment()"><i class="fa fa-paper-plane"></i> Comment</button>
+            </div>
+          </div>
+          <div id="comments-list"></div>
+        </div>
+      </div>
+    </div>
+  `, userData.role);
+
+  document.getElementById('sidebar-nav').innerHTML = getSidebarHTML(userData.role);
+  loadCommunities('all');
+});
+
+function showListView() {
+  document.getElementById('list-view').classList.add('active');
+  document.getElementById('community-view').classList.remove('active');
+  document.getElementById('post-view').classList.remove('active');
+  currentCommunityId = null;
+  currentPostId = null;
+}
+function showCommunityView() {
+  document.getElementById('list-view').classList.remove('active');
+  document.getElementById('community-view').classList.add('active');
+  document.getElementById('post-view').classList.remove('active');
+}
+window.showListView = showListView;
+window.showCommunityView = showCommunityView;
+
+function switchCommTab(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadCommunities(tab);
+}
+window.switchCommTab = switchCommTab;
+
+async function loadCommunities(tab) {
+  const grid = document.getElementById('communities-grid');
+  grid.innerHTML = '<div class="loading-spinner">Loading...</div>';
+  try {
+    let q;
+    if (tab === 'joined') {
+      q = query(collection(db,'communities'), where('members','array-contains', currentUser.uid));
+    } else if (tab === 'year') {
+      q = query(collection(db,'communities'), where('category','==','Year Group'));
+    } else if (tab === 'dept') {
+      q = query(collection(db,'communities'), where('category','==','Department'));
+    } else {
+      q = query(collection(db,'communities'), orderBy('memberCount','desc'));
+    }
+    const snap = await getDocs(q);
+    grid.innerHTML = '';
+    if (snap.empty) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-icon">👥</div><div class="empty-state-title">No communities yet</div><div class="empty-state-desc">Create the first community!</div><button class="btn btn-primary" onclick="openModal('modal-create-community')">Create Community</button></div>`;
+      return;
+    }
+    snap.docs.forEach(d => {
+      const c = d.data();
+      const isJoined = c.members?.includes(currentUser.uid);
+      grid.innerHTML += `
+        <div class="community-card" onclick="openCommunity('${d.id}')">
+          <div class="community-icon">${c.icon||'💬'}</div>
+          <div class="community-name">${c.name}</div>
+          <div class="community-desc">${c.description?.substring(0,80)||''}</div>
+          <div class="community-stats">
+            <span><i class="fa fa-users"></i> ${c.memberCount||0} members</span>
+            <span><i class="fa fa-comments"></i> ${c.postCount||0} posts</span>
+          </div>
+          <div style="margin-top:12px">
+            <button class="btn ${isJoined?'btn-success join-btn joined':'btn-primary'} btn-sm btn-full" onclick="event.stopPropagation();toggleJoin('${d.id}',this,${isJoined})">
+              ${isJoined ? '<i class="fa fa-check"></i> Joined' : '<i class="fa fa-plus"></i> Join'}
+            </button>
+          </div>
+        </div>`;
+    });
+  } catch(e) { grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-title">Error loading communities</div></div>`; console.error(e); }
+}
+
+async function toggleJoin(communityId, btn, isJoined) {
+  try {
+    const ref = doc(db,'communities',communityId);
+    if (isJoined) {
+      await updateDoc(ref, { members: arrayRemove(currentUser.uid), memberCount: increment(-1) });
+      btn.outerHTML = `<button class="btn btn-primary btn-sm btn-full join-btn" onclick="event.stopPropagation();toggleJoin('${communityId}',this,false)"><i class="fa fa-plus"></i> Join</button>`;
+    } else {
+      await updateDoc(ref, { members: arrayUnion(currentUser.uid), memberCount: increment(1) });
+      btn.outerHTML = `<button class="btn btn-success btn-sm btn-full join-btn joined" onclick="event.stopPropagation();toggleJoin('${communityId}',this,true)"><i class="fa fa-check"></i> Joined</button>`;
+      toast('Joined community!','success');
+    }
+  } catch(e) { toast('Error: '+e.message,'error'); }
+}
+window.toggleJoin = toggleJoin;
+
+async function openCommunity(communityId) {
+  currentCommunityId = communityId;
+  showCommunityView();
+  const commDoc = await getDoc(doc(db,'communities',communityId));
+  const c = commDoc.data();
+  const isJoined = c.members?.includes(currentUser.uid);
+  document.getElementById('bc-comm-name').textContent = c.name;
+  document.getElementById('bc-comm-name2').textContent = c.name;
+  document.getElementById('comm-header').innerHTML = `
+    <div class="community-header-icon">${c.icon||'💬'}</div>
+    <div style="flex:1">
+      <div style="font-size:1rem;font-weight:800;margin-bottom:2px;line-height:1.3">${c.name}</div>
+      <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${c.description||''}</div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span class="member-count-badge"><i class="fa fa-users"></i> ${c.memberCount||0} members</span>
+        <span class="member-count-badge" style="background:rgba(0,217,163,0.1);color:var(--accent3)"><i class="fa fa-tag"></i> ${c.category||'General'}</span>
+      </div>
+    </div>
+    <button class="${isJoined?'btn btn-success join-btn joined':'btn btn-primary join-btn'}" onclick="toggleJoin('${communityId}',this,${isJoined})">
+      ${isJoined?'<i class="fa fa-check"></i> Joined':'<i class="fa fa-plus"></i> Join'}
+    </button>`;
+  loadPosts(communityId);
+}
+window.openCommunity = openCommunity;
+
+async function loadPosts(communityId) {
+  const container = document.getElementById('posts-list');
+  container.innerHTML = '<div class="loading-spinner">Loading...</div>';
+  const q = query(collection(db,'communities',communityId,'posts'), orderBy('createdAt','desc'), limit(20));
+  onSnapshot(q, (snap) => {
+    container.innerHTML = '';
+    if (snap.empty) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">💬</div><div class="empty-state-title">No posts yet</div><div class="empty-state-desc">Be the first to post!</div></div>`;
+      return;
+    }
+    snap.docs.forEach(d => {
+      const p = d.data();
+      const liked = p.likedBy?.includes(currentUser.uid);
+      container.innerHTML += `
+        <div class="post-card">
+          <div class="post-header">
+            <div class="post-avatar">${(p.authorName||'U').charAt(0)}</div>
+            <div class="post-meta">
+              <div class="post-author">${p.authorName||'Unknown'}</div>
+              <div class="post-time">${timeAgo(p.createdAt?.toDate())}</div>
+            </div>
+            ${(p.authorId===currentUser.uid||currentUserData.role==='admin'||currentUserData.role==='faculty')?
+              `<button class="btn btn-danger btn-sm btn-icon" onclick="deletePost('${d.id}')"><i class="fa fa-trash"></i></button>`:''
+            }
+          </div>
+          <div class="post-title" style="cursor:pointer" onclick="openPost('${d.id}')">${p.title}</div>
+          <div class="post-body">${p.content?.substring(0,200)||''}${p.content?.length>200?'...':''}</div>
+          ${p.tags?.length?`<div class="post-tags">${p.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>`:''}
+          <div class="post-actions">
+            <button class="post-action-btn ${liked?'liked':''}" onclick="likePost('${d.id}',${liked})">
+              <i class="fa ${liked?'fa-heart':'fa-heart'}" style="${liked?'color:var(--accent-danger)':''}"></i> ${p.likes||0}
+            </button>
+            <button class="post-action-btn" onclick="openPost('${d.id}')"><i class="fa fa-comment"></i> ${p.comments||0} Comments</button>
+            <span style="margin-left:auto;font-size:0.78rem;color:var(--text-muted)"><i class="fa fa-eye"></i> ${p.views||0}</span>
+          </div>
+        </div>`;
+    });
+  });
+}
+
+async function likePost(postId, liked) {
+  const ref = doc(db,'communities',currentCommunityId,'posts',postId);
+  if (liked) {
+    await updateDoc(ref, { likes: increment(-1), likedBy: arrayRemove(currentUser.uid) });
+  } else {
+    await updateDoc(ref, { likes: increment(1), likedBy: arrayUnion(currentUser.uid) });
+  }
+}
+window.likePost = likePost;
+
+async function openPost(postId) {
+  currentPostId = postId;
+  const postDoc = await getDoc(doc(db,'communities',currentCommunityId,'posts',postId));
+  const p = postDoc.data();
+  await updateDoc(doc(db,'communities',currentCommunityId,'posts',postId), { views: increment(1) });
+  const liked = p.likedBy?.includes(currentUser.uid);
+  document.getElementById('post-detail-content').innerHTML = `
+    <div class="card post-detail">
+      <div class="post-header" style="margin-bottom:16px">
+        <div class="post-avatar">${(p.authorName||'U').charAt(0)}</div>
+        <div class="post-meta">
+          <div class="post-author">${p.authorName||'Unknown'}</div>
+          <div class="post-time">${p.createdAt?.toDate()?.toLocaleDateString()}</div>
+        </div>
+      </div>
+      <h1 style="font-size:1.3rem;font-weight:800;margin-bottom:12px">${p.title}</h1>
+      ${p.tags?.length?`<div class="post-tags" style="margin-bottom:14px">${p.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>`:''}
+      <div style="font-size:0.9rem;color:var(--text-secondary);line-height:1.8;white-space:pre-wrap">${p.content}</div>
+      <div class="post-actions" style="margin-top:20px">
+        <button class="post-action-btn ${liked?'liked':''}" onclick="likePost('${postId}',${liked});loadPost('${postId}')">
+          <i class="fa fa-heart" style="${liked?'color:var(--accent-danger)':''}"></i> ${p.likes||0} Likes
+        </button>
+        <span class="post-action-btn"><i class="fa fa-eye"></i> ${p.views||0} Views</span>
+      </div>
+    </div>`;
+  document.getElementById('comments-title').textContent = `Comments (${p.comments||0})`;
+  document.getElementById('list-view').classList.remove('active');
+  document.getElementById('community-view').classList.remove('active');
+  document.getElementById('post-view').classList.add('active');
+  loadComments(postId);
+}
+window.openPost = openPost;
+
+async function loadComments(postId) {
+  const container = document.getElementById('comments-list');
+  const q = query(collection(db,'communities',currentCommunityId,'posts',postId,'comments'), orderBy('createdAt','asc'));
+  onSnapshot(q, (snap) => {
+    if (snap.empty) { container.innerHTML = '<div class="text-muted text-sm" style="padding:10px 0">No comments yet. Be the first!</div>'; return; }
+    container.innerHTML = '';
+    snap.docs.forEach(d => {
+      const c = d.data();
+      container.innerHTML += `
+        <div class="comment-card">
+          <div class="comment-header">
+            <div class="comment-avatar">${(c.authorName||'U').charAt(0)}</div>
+            <div>
+              <div style="font-size:0.83rem;font-weight:600">${c.authorName||'Unknown'}</div>
+              <div style="font-size:0.72rem;color:var(--text-muted)">${timeAgo(c.createdAt?.toDate())}</div>
+            </div>
+            ${(c.authorId===currentUser.uid||currentUserData.role==='admin'||currentUserData.role==='faculty')?
+              `<button class="btn btn-danger btn-sm btn-icon" style="margin-left:auto" onclick="deleteComment('${d.id}')"><i class="fa fa-trash"></i></button>`:''
+            }
+          </div>
+          <div style="font-size:0.875rem;color:var(--text-secondary);line-height:1.6">${c.content}</div>
+        </div>`;
+    });
+  });
+}
+
+async function submitComment() {
+  const content = document.getElementById('comment-input').value.trim();
+  if (!content) { toast('Write something first','error'); return; }
+  try {
+    await addDoc(collection(db,'communities',currentCommunityId,'posts',currentPostId,'comments'), {
+      content, authorId: currentUser.uid, authorName: currentUserData.name,
+      createdAt: serverTimestamp()
+    });
+    await updateDoc(doc(db,'communities',currentCommunityId,'posts',currentPostId), { comments: increment(1) });
+    document.getElementById('comment-input').value = '';
+    toast('Comment added!','success');
+  } catch(e) { toast(e.message,'error'); }
+}
+window.submitComment = submitComment;
+
+async function deletePost(postId) {
+  if (!confirm('Delete this post?')) return;
+  try {
+    await deleteDoc(doc(db,'communities',currentCommunityId,'posts',postId));
+    await updateDoc(doc(db,'communities',currentCommunityId), { postCount: increment(-1) });
+    toast('Post deleted','success');
+  } catch(e) { toast(e.message,'error'); }
+}
+window.deletePost = deletePost;
+
+async function deleteComment(commentId) {
+  if (!confirm('Delete comment?')) return;
+  try {
+    await deleteDoc(doc(db,'communities',currentCommunityId,'posts',currentPostId,'comments',commentId));
+    await updateDoc(doc(db,'communities',currentCommunityId,'posts',currentPostId), { comments: increment(-1) });
+  } catch(e) { toast(e.message,'error'); }
+}
+window.deleteComment = deleteComment;
+
+// Tags
+function handleTagInput(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const val = e.target.value.trim().replace(/,$/, '');
+    if (val && tags.length < 5 && !tags.includes(val)) {
+      tags.push(val);
+      renderTags();
+      e.target.value = '';
+    }
+  }
+}
+window.handleTagInput = handleTagInput;
+function renderTags() {
+  const container = document.getElementById('tag-input-container');
+  const input = document.getElementById('tag-input-field');
+  container.innerHTML = '';
+  tags.forEach((t,i) => {
+    const chip = document.createElement('div');
+    chip.className = 'tag-chip';
+    chip.innerHTML = `${t}<button onclick="removeTag(${i})">✕</button>`;
+    container.appendChild(chip);
+  });
+  container.appendChild(input);
+}
+window.removeTag = (i) => { tags.splice(i,1); renderTags(); };
+
+async function createCommunity() {
+  const name = document.getElementById('new-comm-name').value.trim();
+  const desc = document.getElementById('new-comm-desc').value.trim();
+  const icon = document.getElementById('new-comm-icon').value.trim() || '💬';
+  const category = document.getElementById('new-comm-category').value;
+  if (!name || !desc) { toast('Fill all fields','error'); return; }
+  try {
+    showLoading(true);
+    await addDoc(collection(db,'communities'), {
+      name, description: desc, icon, category,
+      createdBy: currentUser.uid, createdByName: currentUserData.name,
+      members: [currentUser.uid], memberCount: 1, postCount: 0,
+      createdAt: serverTimestamp()
+    });
+    closeModal('modal-create-community');
+    showLoading(false);
+    toast('Community created!','success');
+    loadCommunities('all');
+  } catch(e) { showLoading(false); toast(e.message,'error'); }
+}
+window.createCommunity = createCommunity;
+
+async function createPost() {
+  const title = document.getElementById('new-post-title').value.trim();
+  const content = document.getElementById('new-post-content').value.trim();
+  if (!title || !content) { toast('Fill all fields','error'); return; }
+  if (!currentCommunityId) { toast('Select a community first','error'); return; }
+  try {
+    showLoading(true);
+    await addDoc(collection(db,'communities',currentCommunityId,'posts'), {
+      title, content, tags, authorId: currentUser.uid,
+      authorName: currentUserData.name, authorRole: currentUserData.role,
+      likes: 0, likedBy: [], comments: 0, views: 0,
+      createdAt: serverTimestamp()
+    });
+    await updateDoc(doc(db,'communities',currentCommunityId), { postCount: increment(1) });
+    await updateDoc(doc(db,'users',currentUser.uid), { postsCount: increment(1), reputation: increment(2) });
+    closeModal('modal-create-post');
+    showLoading(false);
+    tags = [];
+    toast('Post created!','success');
+  } catch(e) { showLoading(false); toast(e.message,'error'); }
+}
+window.createPost = createPost;
+
+</script>
+</body>
+</html>

@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CampusConnect — Login</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css"/>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <style>
+    .role-selector { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 18px; }
+    .role-option {
+      padding: 12px 8px;
+      background: var(--bg-input);
+      border: 2px solid var(--border);
+      border-radius: var(--radius-sm);
+      text-align: center;
+      cursor: pointer;
+      transition: var(--transition);
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .role-option:hover { border-color: var(--accent); color: var(--accent); }
+    .role-option.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+    .role-option .role-icon { font-size: 1.3rem; display: block; margin-bottom: 4px; }
+    .auth-tabs { display: flex; background: var(--bg-input); border-radius: var(--radius-sm); padding: 4px; margin-bottom: 24px; gap: 4px; border: 1px solid var(--border-soft); }
+    .auth-tab { flex: 1; padding: 10px; text-align: center; border-radius: 6px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: var(--transition); color: var(--text-muted); background: none; }
+    .auth-tab.active { background: var(--accent); color: #fff; }
+    .auth-panel { display: none; }
+    .auth-panel.active { display: block; }
+    .verify-info { background: var(--accent-soft); border: 1px solid rgba(79,142,247,0.2); border-radius: var(--radius-sm); padding: 14px; font-size: 0.83rem; color: var(--text-secondary); margin-bottom: 18px; line-height: 1.6; }
+    .resend-timer { font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top: 12px; }
+    .resend-timer a { color: var(--accent); cursor: pointer; }
+    .step-labels { display: flex; gap: 0; margin-bottom: 8px; }
+    .step-label { flex: 1; font-size: 0.68rem; color: var(--text-muted); text-align: center; }
+    .step-label:first-child { text-align: left; }
+    .step-label:last-child { text-align: right; }
+    .password-toggle { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer; font-size: 0.9rem; }
+    .input-group { position: relative; }
+    .input-group input { padding-left: 38px; }
+    .input-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem; pointer-events: none; z-index: 1; }
+    .input-group.relative { position: relative; }
+  </style>
+  <!-- EmailJS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script>
+    // 🔴 REPLACE THESE WITH YOUR EMAILJS VALUES
+    // Sign up free at emailjs.com → Create service → Create template → Get keys
+    const EMAILJS_PUBLIC_KEY   = "rPu_17tCPeH1wtBSZ";    // Account → API Keys
+    const EMAILJS_SERVICE_ID   = "service_f9e6rk9";    // Email Services tab
+    const EMAILJS_TEMPLATE_ID  = "template_cfkh9rm";   // Email Templates tab
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+  </script>
+  <script>
+    // Apply saved theme before render to prevent flash
+    (function() {
+      const t = localStorage.getItem('cc_theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+</head>
+<body>
+<div id="toast-container"></div>
+<div id="loading-overlay" class="loading-overlay" style="display:none">
+  <div class="loading-box">
+    <div class="loading-spinner" style="width:32px;height:32px;border-width:3px;"></div>
+    <div style="font-size:0.9rem;color:var(--text-secondary)">Processing...</div>
+  </div>
+</div>
+
+<div class="auth-page">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div class="auth-logo-icon">🎓</div>
+      <div class="auth-logo-text">CampusConnect<span>Academic Collaboration Platform</span></div>
+    </div>
+
+    <!-- AUTH TABS -->
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchAuthTab('login')">Sign In</button>
+      <button class="auth-tab" onclick="switchAuthTab('register')">Register</button>
+    </div>
+
+    <!-- ========== LOGIN PANEL ========== -->
+    <div id="panel-login" class="auth-panel active">
+      <h2 class="auth-title">Welcome back 👋</h2>
+      <p class="auth-subtitle">Sign in to your CampusConnect account</p>
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <div class="input-group">
+          <i class="fa fa-envelope input-icon"></i>
+          <input type="email" id="login-email" placeholder="your@college.edu" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <div class="input-group relative">
+          <i class="fa fa-lock input-icon"></i>
+          <input type="password" id="login-password" placeholder="Enter password" style="padding-left:36px;padding-right:36px" />
+          <span class="password-toggle" onclick="togglePwd('login-password',this)"><i class="fa fa-eye"></i></span>
+        </div>
+      </div>
+      <div style="text-align:right;margin-bottom:18px">
+        <a href="#" style="font-size:0.82rem;color:var(--accent)" onclick="showForgotPassword()">Forgot password?</a>
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="handleLogin()">
+        <i class="fa fa-sign-in-alt"></i> Sign In
+      </button>
+      <div class="auth-switch">Don't have an account? <a href="#" onclick="switchAuthTab('register')">Register here</a></div>
+    </div>
+
+    <!-- ========== REGISTER PANEL ========== -->
+    <div id="panel-register" class="auth-panel">
+
+      <!-- STEP 1: Basic Info -->
+      <div id="reg-step-1">
+        <h2 class="auth-title">Create Account</h2>
+        <p class="auth-subtitle">Join your college's academic platform</p>
+        <div class="steps">
+          <div class="step-item"><div class="step-num active">1</div><div class="step-line"></div></div>
+          <div class="step-item"><div class="step-num" id="step-num-2">2</div><div class="step-line"></div></div>
+          <div class="step-item"><div class="step-num" id="step-num-3">3</div></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Select Your Role</label>
+          <div class="role-selector">
+            <div class="role-option selected" data-role="student" onclick="selectRole(this)">
+              <span class="role-icon">🎓</span>Student
+            </div>
+            <div class="role-option" data-role="faculty" onclick="selectRole(this)">
+              <span class="role-icon">👨‍🏫</span>Faculty
+            </div>
+            <div class="role-option" data-role="admin" onclick="selectRole(this)">
+              <span class="role-icon">🛡️</span>Admin
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <div class="input-group">
+            <i class="fa fa-user input-icon"></i>
+            <input type="text" id="reg-name" placeholder="Your full name" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">College Email</label>
+          <div class="input-group">
+            <i class="fa fa-envelope input-icon"></i>
+            <input type="email" id="reg-email" placeholder="rollno@college.edu" />
+          </div>
+        </div>
+        <div class="form-group" id="student-fields">
+          <label class="form-label">Student Registration Number / ID</label>
+          <div class="input-group">
+            <i class="fa fa-id-card input-icon"></i>
+            <input type="text" id="reg-student-id" placeholder="e.g. 21BCS0045" />
+          </div>
+          <p class="form-hint">This must match your official college registration number</p>
+        </div>
+        <div class="form-group" id="faculty-fields" style="display:none">
+          <label class="form-label">Employee / Faculty ID</label>
+          <div class="input-group">
+            <i class="fa fa-id-badge input-icon"></i>
+            <input type="text" id="reg-faculty-id" placeholder="e.g. FAC2024001" />
+          </div>
+        </div>
+        <div class="form-group" id="year-field">
+          <label class="form-label">Year / Semester</label>
+          <select id="reg-year">
+            <option value="">Select Year</option>
+            <option value="1">1st Year</option>
+            <option value="2">2nd Year</option>
+            <option value="3">3rd Year</option>
+            <option value="4">4th Year</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Department / Branch</label>
+          <select id="reg-dept">
+            <option value="">Select Department</option>
+            <option>Computer Science Engineering</option>
+            <option>Information Technology</option>
+            <option>Electronics & Communication</option>
+            <option>Electrical Engineering</option>
+            <option>Mechanical Engineering</option>
+            <option>Civil Engineering</option>
+            <option>Chemical Engineering</option>
+            <option>Biotechnology</option>
+            <option>Data Science</option>
+            <option>Artificial Intelligence & ML</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone Number</label>
+          <div class="input-group">
+            <i class="fa fa-phone input-icon"></i>
+            <input type="tel" id="reg-phone" placeholder="+91 9876543210" />
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="goToStep2()">
+          Continue <i class="fa fa-arrow-right"></i>
+        </button>
+        <div class="auth-switch">Already registered? <a href="#" onclick="switchAuthTab('login')">Sign in</a></div>
+      </div>
+
+      <!-- STEP 2: Password -->
+      <div id="reg-step-2" style="display:none">
+        <h2 class="auth-title">Set Password</h2>
+        <p class="auth-subtitle">Create a secure password for your account</p>
+        <div class="steps">
+          <div class="step-item"><div class="step-num done">✓</div><div class="step-line done"></div></div>
+          <div class="step-item"><div class="step-num active">2</div><div class="step-line"></div></div>
+          <div class="step-item"><div class="step-num" id="step-num-3b">3</div></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <div class="input-group relative">
+            <i class="fa fa-lock input-icon"></i>
+            <input type="password" id="reg-password" placeholder="Min 8 characters" style="padding-left:36px;padding-right:36px" oninput="checkPasswordStrength(this.value)"/>
+            <span class="password-toggle" onclick="togglePwd('reg-password',this)"><i class="fa fa-eye"></i></span>
+          </div>
+          <div id="pwd-strength-bar" style="height:4px;border-radius:4px;margin-top:6px;transition:.3s;background:var(--border)"></div>
+          <p id="pwd-strength-label" class="form-hint">Enter a password</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Confirm Password</label>
+          <div class="input-group relative">
+            <i class="fa fa-lock input-icon"></i>
+            <input type="password" id="reg-confirm-password" placeholder="Re-enter password" style="padding-left:36px;padding-right:36px"/>
+            <span class="password-toggle" onclick="togglePwd('reg-confirm-password',this)"><i class="fa fa-eye"></i></span>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-secondary" onclick="goToStep1()"><i class="fa fa-arrow-left"></i> Back</button>
+          <button class="btn btn-primary" style="flex:1" onclick="goToStep3()">Send Verification <i class="fa fa-arrow-right"></i></button>
+        </div>
+      </div>
+
+      <!-- STEP 3: OTP Verification -->
+      <div id="reg-step-3" style="display:none">
+        <h2 class="auth-title">Verify Your Account</h2>
+        <p class="auth-subtitle">Enter the 6-digit code sent to your email</p>
+        <div class="steps">
+          <div class="step-item"><div class="step-num done">✓</div><div class="step-line done"></div></div>
+          <div class="step-item"><div class="step-num done">✓</div><div class="step-line done"></div></div>
+          <div class="step-item"><div class="step-num active">3</div></div>
+        </div>
+        <div class="verify-info">
+          <i class="fa fa-info-circle" style="color:var(--accent)"></i>
+          A verification code has been sent to <strong id="verify-email-display"></strong>. Enter it below to complete your registration.
+        </div>
+        <div class="otp-inputs">
+          <input type="text" class="otp-input" maxlength="1" id="otp-0" oninput="otpNext(this,0)" onkeydown="otpBack(event,0)"/>
+          <input type="text" class="otp-input" maxlength="1" id="otp-1" oninput="otpNext(this,1)" onkeydown="otpBack(event,1)"/>
+          <input type="text" class="otp-input" maxlength="1" id="otp-2" oninput="otpNext(this,2)" onkeydown="otpBack(event,2)"/>
+          <input type="text" class="otp-input" maxlength="1" id="otp-3" oninput="otpNext(this,3)" onkeydown="otpBack(event,3)"/>
+          <input type="text" class="otp-input" maxlength="1" id="otp-4" oninput="otpNext(this,4)" onkeydown="otpBack(event,4)"/>
+          <input type="text" class="otp-input" maxlength="1" id="otp-5" oninput="otpNext(this,5)" onkeydown="otpBack(event,5)"/>
+        </div>
+        <div class="resend-timer">Didn't get it? <a id="resend-link" onclick="resendOTP()" style="pointer-events:none;opacity:0.5">Resend</a> <span id="timer-text">in 60s</span></div>
+        <button class="btn btn-primary btn-full" onclick="verifyOTP()" style="margin-top:16px">
+          <i class="fa fa-check-circle"></i> Verify & Create Account
+        </button>
+        <div style="text-align:center;margin-top:12px">
+          <button class="btn btn-secondary btn-sm" onclick="goToStep2()">← Change Password</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== FORGOT PASSWORD ========== -->
+    <div id="panel-forgot" class="auth-panel">
+      <h2 class="auth-title">Reset Password</h2>
+      <p class="auth-subtitle">We'll send a reset link to your registered email</p>
+      <div class="form-group">
+        <label class="form-label">College Email</label>
+        <div class="input-group">
+          <i class="fa fa-envelope input-icon"></i>
+          <input type="email" id="forgot-email" placeholder="your@college.edu" />
+        </div>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="handleForgotPassword()">
+        <i class="fa fa-paper-plane"></i> Send Reset Link
+      </button>
+      <div class="auth-switch"><a href="#" onclick="switchAuthTab('login')">← Back to Sign In</a></div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module">
+import { auth, db } from './js/firebase-config.js';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import {
+  doc, setDoc, getDoc, collection, query, where, getDocs, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+window._auth = auth;
+window._db = db;
+window._firebase = { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, doc, setDoc, getDoc, collection, query, where, getDocs, serverTimestamp };
+
+// Redirect if already logged in
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) {
+      const role = userDoc.data().role;
+      if (role === 'admin') window.location.href = 'pages/admin.html';
+      else window.location.href = 'pages/dashboard.html';
+    }
+  }
+});
+</script>
+
+<script>
+let selectedRole = 'student';
+let otpCode = '';
+let timerInterval;
+
+function showLoading(v) { document.getElementById('loading-overlay').style.display = v ? 'flex' : 'none'; }
+
+function toast(msg, type='info') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  const icons = {success:'✅',error:'❌',info:'ℹ️'};
+  t.innerHTML = `<span class="toast-icon">${icons[type]||'ℹ️'}</span><span>${msg}</span>`;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+function switchAuthTab(tab) {
+  document.querySelectorAll('.auth-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + (tab === 'forgot' ? 'forgot' : tab)).classList.add('active');
+  if (tab !== 'forgot') {
+    const idx = tab === 'login' ? 0 : 1;
+    document.querySelectorAll('.auth-tab')[idx].classList.add('active');
+  }
+}
+
+function showForgotPassword() { switchAuthTab('forgot'); }
+
+function togglePwd(id, btn) {
+  const inp = document.getElementById(id);
+  if (inp.type === 'password') { inp.type = 'text'; btn.innerHTML = '<i class="fa fa-eye-slash"></i>'; }
+  else { inp.type = 'password'; btn.innerHTML = '<i class="fa fa-eye"></i>'; }
+}
+
+function selectRole(el) {
+  document.querySelectorAll('.role-option').forEach(r => r.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedRole = el.dataset.role;
+  document.getElementById('student-fields').style.display = selectedRole === 'student' ? 'block' : 'none';
+  document.getElementById('faculty-fields').style.display = selectedRole === 'faculty' ? 'block' : 'none';
+  document.getElementById('year-field').style.display = selectedRole === 'admin' ? 'none' : 'block';
+}
+
+function checkPasswordStrength(pwd) {
+  const bar = document.getElementById('pwd-strength-bar');
+  const label = document.getElementById('pwd-strength-label');
+  let score = 0;
+  if (pwd.length >= 8) score++;
+  if (/[A-Z]/.test(pwd)) score++;
+  if (/[0-9]/.test(pwd)) score++;
+  if (/[^A-Za-z0-9]/.test(pwd)) score++;
+  const colors = ['var(--accent-danger)','var(--accent-warn)','var(--accent3)','var(--accent-success)'];
+  const labels = ['Weak','Fair','Good','Strong'];
+  bar.style.background = colors[score-1] || 'var(--border)';
+  bar.style.width = `${score*25}%`;
+  label.textContent = score > 0 ? labels[score-1] : 'Enter a password';
+  label.style.color = colors[score-1] || 'var(--text-muted)';
+}
+
+function goToStep1() {
+  document.getElementById('reg-step-1').style.display = 'block';
+  document.getElementById('reg-step-2').style.display = 'none';
+}
+function goToStep2() {
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const dept = document.getElementById('reg-dept').value;
+  if (!name || !email) { toast('Please fill name and email','error'); return; }
+  if (!email.includes('@')) { toast('Enter a valid email','error'); return; }
+  if (selectedRole === 'student' && !document.getElementById('reg-student-id').value.trim()) { toast('Enter your student ID','error'); return; }
+  if (selectedRole === 'faculty' && !document.getElementById('reg-faculty-id').value.trim()) { toast('Enter your faculty ID','error'); return; }
+  if (!dept) { toast('Select your department','error'); return; }
+  document.getElementById('reg-step-1').style.display = 'none';
+  document.getElementById('reg-step-2').style.display = 'block';
+  document.getElementById('reg-step-3').style.display = 'none';
+}
+async function goToStep3() {
+  const pwd = document.getElementById('reg-password').value;
+  const cpwd = document.getElementById('reg-confirm-password').value;
+  if (pwd.length < 8) { toast('Password must be at least 8 characters','error'); return; }
+  if (pwd !== cpwd) { toast('Passwords do not match','error'); return; }
+  document.getElementById('reg-step-2').style.display = 'none';
+  document.getElementById('reg-step-3').style.display = 'block';
+  const email = document.getElementById('reg-email').value;
+  const name = document.getElementById('reg-name').value;
+  document.getElementById('verify-email-display').textContent = email;
+  await sendOTPEmail(email, name);
+  startOTPTimer();
+}
+
+async function sendOTPEmail(email, name) {
+  otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  try {
+    await emailjs.send(
+      EMAILJS_SERVICE_ID,
+      EMAILJS_TEMPLATE_ID,
+      { to_email: email, to_name: name || 'Student', otp_code: otpCode, app_name: 'CampusConnect' }
+    );
+    toast('Verification code sent to your email! Check inbox & spam.', 'success');
+  } catch(err) {
+    console.error('EmailJS error:', err);
+    toast('Could not send email. Please check your EmailJS configuration.', 'error');
+  }
+}
+
+function startOTPTimer() {
+  let seconds = 60;
+  const timerText = document.getElementById('timer-text');
+  const resendLink = document.getElementById('resend-link');
+  resendLink.style.pointerEvents = 'none';
+  resendLink.style.opacity = '0.5';
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    seconds--;
+    timerText.textContent = `in ${seconds}s`;
+    if (seconds <= 0) {
+      clearInterval(timerInterval);
+      timerText.textContent = '';
+      resendLink.style.pointerEvents = 'auto';
+      resendLink.style.opacity = '1';
+    }
+  }, 1000);
+}
+
+async function resendOTP() {
+  const email = document.getElementById('reg-email').value;
+  const name = document.getElementById('reg-name').value;
+  await sendOTPEmail(email, name);
+  startOTPTimer();
+}
+
+function otpNext(input, idx) {
+  input.value = input.value.replace(/\D/g,'');
+  if (input.value && idx < 5) document.getElementById('otp-'+(idx+1)).focus();
+}
+function otpBack(e, idx) {
+  if (e.key === 'Backspace' && !document.getElementById('otp-'+idx).value && idx > 0)
+    document.getElementById('otp-'+(idx-1)).focus();
+}
+
+function getEnteredOTP() {
+  return [0,1,2,3,4,5].map(i => document.getElementById('otp-'+i).value).join('');
+}
+
+async function verifyOTP() {
+  const entered = getEnteredOTP();
+  if (entered.length !== 6) { toast('Enter all 6 digits','error'); return; }
+  if (entered !== otpCode) { toast('Invalid verification code','error'); return; }
+  await createAccount();
+}
+
+async function createAccount() {
+  showLoading(true);
+  try {
+    const { createUserWithEmailAndPassword, sendEmailVerification, doc, setDoc, serverTimestamp } = window._firebase;
+    const auth = window._auth;
+    const db = window._db;
+    const email = document.getElementById('reg-email').value;
+    const password = document.getElementById('reg-password').value;
+    const name = document.getElementById('reg-name').value;
+    const phone = document.getElementById('reg-phone').value;
+    const dept = document.getElementById('reg-dept').value;
+    const year = document.getElementById('reg-year').value;
+    const studentId = document.getElementById('reg-student-id').value;
+    const facultyId = document.getElementById('reg-faculty-id').value;
+
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    await sendEmailVerification(cred.user);
+
+    const userData = {
+      uid: cred.user.uid,
+      name,
+      email,
+      phone,
+      role: selectedRole,
+      dept,
+      year: selectedRole === 'student' ? year : null,
+      studentId: selectedRole === 'student' ? studentId : null,
+      facultyId: selectedRole === 'faculty' ? facultyId : null,
+      reputation: 0,
+      postsCount: 0,
+      answersCount: 0,
+      approved: selectedRole === 'admin' ? true : false,
+      createdAt: serverTimestamp(),
+      avatar: name.charAt(0).toUpperCase(),
+      bio: '',
+      communities: []
+    };
+    await setDoc(doc(db, 'users', cred.user.uid), userData);
+    showLoading(false);
+    toast('Account created! Please verify your email.', 'success');
+    setTimeout(() => {
+      if (selectedRole === 'admin') window.location.href = 'pages/admin.html';
+      else window.location.href = 'pages/dashboard.html';
+    }, 1500);
+  } catch (err) {
+    showLoading(false);
+    if (err.code === 'auth/email-already-in-use') toast('Email already registered. Try logging in.', 'error');
+    else toast('Registration failed: ' + err.message, 'error');
+  }
+}
+
+async function handleLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) { toast('Enter email and password','error'); return; }
+  showLoading(true);
+  try {
+    const { signInWithEmailAndPassword, doc, getDoc } = window._firebase;
+    const cred = await signInWithEmailAndPassword(window._auth, email, password);
+    const userDoc = await getDoc(doc(window._db, 'users', cred.user.uid));
+    showLoading(false);
+    if (!userDoc.exists()) { toast('User data not found','error'); return; }
+    const data = userDoc.data();
+    if (!data.approved && data.role !== 'admin') {
+      toast('Your account is pending admin approval.', 'info');
+      return;
+    }
+    toast('Welcome back, ' + data.name + '!', 'success');
+    setTimeout(() => {
+      if (data.role === 'admin') window.location.href = 'pages/admin.html';
+      else window.location.href = 'pages/dashboard.html';
+    }, 1000);
+  } catch (err) {
+    showLoading(false);
+    if (err.code === 'auth/invalid-credential') toast('Invalid email or password','error');
+    else toast(err.message,'error');
+  }
+}
+
+async function handleForgotPassword() {
+  const email = document.getElementById('forgot-email').value.trim();
+  if (!email) { toast('Enter your email','error'); return; }
+  showLoading(true);
+  try {
+    await window._firebase.sendPasswordResetEmail(window._auth, email);
+    showLoading(false);
+    toast('Password reset email sent!','success');
+    switchAuthTab('login');
+  } catch (err) {
+    showLoading(false);
+    toast(err.message,'error');
+  }
+}
+</script>
+</body>
+</html>

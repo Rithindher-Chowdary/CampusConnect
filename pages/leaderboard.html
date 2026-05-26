@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Leaderboard — CampusConnect</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+
+<style>
+.act-stat { display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:0.82rem;border-bottom:1px solid var(--border-soft);color:var(--text-secondary); }
+.act-stat:last-child { border-bottom:none; }
+.act-num { font-weight:700;color:var(--text-primary); }
+</style>
+</head>
+<body>
+<div id="app-root"></div>
+
+<script type="module">
+import { requireAuth, getLayoutHTML, toast, logout, openModal, closeModal } from '../js/app.js?v=76';
+import { db } from '../js/firebase-config.js';
+import { collection, getDocs, query, orderBy, limit, where } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+let currentUser, currentUserData;
+let allUsers = [];
+let currentFilter = 'all';
+
+requireAuth(async (user, userData) => {
+  currentUser = user;
+  currentUserData = userData;
+  document.getElementById('app-root').innerHTML = getLayoutHTML('Leaderboard', getPageHTML(), userData.role);
+  initPage();
+});
+
+function getPageHTML() {
+  return `
+  <div class="page-content">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Leaderboard</h1>
+      <p class="page-subtitle">Top contributors based on reputation earned</p>
+    </div>
+  </div>
+
+  <div class="lb-controls">
+    <div class="filter-chips">
+      <button class="chip active" onclick="filterLB('all',this)">🌐 Overall</button>
+      <button class="chip" onclick="filterLB('student',this)">👨‍🎓 Students</button>
+      <button class="chip" onclick="filterLB('faculty',this)">👨‍🏫 Faculty</button>
+      <button class="chip" onclick="filterLB('dept',this)">🏛️ My Dept</button>
+    </div>
+  </div>
+
+  <div class="lb-layout">
+    <div class="lb-main">
+      <!-- Top 3 podium -->
+      <div class="podium-section" id="podium"></div>
+      <!-- Rest of list -->
+      <div class="lb-list" id="lb-list">
+        ${[1,2,3,4,5].map(i=>`<div class="skeleton skeleton-card" style="height:64px;margin-bottom:8px;animation-delay:${i*0.08}s"></div>`).join('')}
+      </div>
+    </div>
+    <div class="lb-sidebar">
+      <div class="sidebar-widget">
+        <h3 class="widget-title">🎯 Your Ranking</h3>
+        <div id="my-rank-card"></div>
+      </div>
+      <div class="sidebar-widget">
+        <h3 class="widget-title">🏅 Level Guide</h3>
+        ${getLevelGuide()}
+      </div>
+      <div class="sidebar-widget">
+        <h3 class="widget-title">💡 How to earn rep</h3>
+        ${getRepGuide()}
+      </div>
+    </div>
+  </div>`;
+}
+
+function initPage() {
+  window.filterLB = filterLB;
+  window._logout = logout;
+  window.openModal = openModal;
+  window.closeModal = closeModal;
+  loadLeaderboard();
+}
+
+function filterLB(filter, el) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-chips .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderLeaderboard();
+}
+
+async function loadLeaderboard() {
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => u.approved !== false);
+    renderLeaderboard();
+    renderMyRank();
+  } catch(e) { document.getElementById('lb-list').innerHTML = '<p>Failed to load</p>'; }
+}
+
+function renderLeaderboard() {
+  let filtered = [...allUsers];
+  if (currentFilter === 'student') filtered = filtered.filter(u => u.role === 'student');
+  else if (currentFilter === 'faculty') filtered = filtered.filter(u => u.role === 'faculty');
+  else if (currentFilter === 'dept') filtered = filtered.filter(u => u.dept === currentUserData.dept);
+  filtered.sort((a,b) => (b.reputation||0) - (a.reputation||0));
+
+  const top3 = filtered.slice(0, 3);
+  const rest = filtered.slice(3);
+
+  // Podium
+  const podium = document.getElementById('podium');
+  if (top3.length) {
+    const [first, second, third] = top3;
+    podium.innerHTML = `
+    <div class="podium">
+      ${second ? `<div class="podium-slot rank-2">
+        <div class="podium-avatar">${(second.name||'U')[0]}</div>
+        <div class="podium-name">${second.name||'User'}</div>
+        <div class="podium-dept">${second.dept||''} ${second.year?`• ${parseInt(second.year)||''} Year`:''}</div>
+        <div class="podium-rep">${second.reputation||0} rep</div>
+        <div class="podium-stand second"><div class="podium-rank">🥈</div></div>
+      </div>` : '<div class="podium-slot"></div>'}
+      ${first ? `<div class="podium-slot rank-1">
+        <div class="podium-crown">👑</div>
+        <div class="podium-avatar large">${(first.name||'U')[0]}</div>
+        <div class="podium-name">${first.name||'User'}</div>
+        <div class="podium-dept">${first.dept||''} ${first.year?`• ${parseInt(first.year)||''} Year`:''}</div>
+        <div class="podium-rep">${first.reputation||0} rep</div>
+        <div class="podium-stand first"><div class="podium-rank">🥇</div></div>
+      </div>` : ''}
+      ${third ? `<div class="podium-slot rank-3">
+        <div class="podium-avatar">${(third.name||'U')[0]}</div>
+        <div class="podium-name">${third.name||'User'}</div>
+        <div class="podium-dept">${third.dept||''} ${third.year?`• ${parseInt(third.year)||''} Year`:''}</div>
+        <div class="podium-rep">${third.reputation||0} rep</div>
+        <div class="podium-stand third"><div class="podium-rank">🥉</div></div>
+      </div>` : '<div class="podium-slot"></div>'}
+    </div>`;
+  } else { podium.innerHTML = ''; }
+
+  // Rest of list
+  const list = document.getElementById('lb-list');
+  if (rest.length === 0 && top3.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">🏆</div><h3>No users yet</h3></div>`;
+    return;
+  }
+  list.innerHTML = rest.map((user, idx) => renderRow(user, idx + 4)).join('');
+}
+
+function renderRow(user, rank) {
+  const level = getLevel(user.reputation || 0);
+  const isMe = user.id === currentUser.uid;
+  const rankClass = rank === 4 ? 'lb-rank-1' : rank === 5 ? 'lb-rank-2' : rank === 6 ? 'lb-rank-3' : '';
+  // stagger animation delay
+  const delay = Math.min((rank - 4) * 0.04, 0.4);
+  return `
+  <div class="lb-row ${isMe ? 'my-row' : ''}" style="animation-delay:${delay}s">
+    <div class="lb-rank ${rankClass}">${rank}</div>
+    <div class="lb-user">
+      <div class="lb-avatar" style="${isMe ? 'background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:var(--accent)' : ''}">${(user.name||'U')[0]}</div>
+      <div class="lb-user-info">
+        <div class="lb-name">${user.name || 'Unknown'} ${isMe ? '<span class="you-badge">You</span>' : ''}</div>
+        <div class="lb-sub">${user.dept || ''} ${user.year ? `• ${parseInt(user.year)||user.year} Year` : ''} • ${user.role}</div>
+      </div>
+    </div>
+    <div class="lb-level" style="color:${level.color}">${level.icon} ${level.label}</div>
+    <div class="lb-rep-col">
+      <div class="lb-rep-num">${user.reputation || 0}</div>
+      <div class="lb-rep-bar-wrap"><div class="lb-rep-bar" style="width:${Math.min((user.reputation||0)/1000*100,100)}%"></div></div>
+    </div>
+  </div>`;
+}
+
+async function renderMyRank() {
+  const sorted = [...allUsers].sort((a,b) => (b.reputation||0) - (a.reputation||0));
+  const rank = sorted.findIndex(u => u.id === currentUser.uid) + 1;
+  const level = getLevel(currentUserData.reputation || 0);
+  const next = sorted[rank - 2];
+  const diff = next ? (next.reputation||0) - (currentUserData.reputation||0) : 0;
+
+  // Load activity stats
+  let doubtsCount = 0, answersCount = 0, resourcesCount = 0, testsCount = 0, passedCount = 0;
+  try {
+    const [doubts, answers, resources, tests] = await Promise.all([
+      getDocs(query(collection(db, 'doubts'), where('authorId','==',currentUser.uid))),
+      getDocs(query(collection(db, 'answers'), where('authorId','==',currentUser.uid))),
+      getDocs(query(collection(db, 'resources'), where('authorId','==',currentUser.uid))),
+      getDocs(query(collection(db, 'testSubmissions'), where('userId','==',currentUser.uid))),
+    ]);
+    doubtsCount = doubts.size;
+    answersCount = answers.size;
+    resourcesCount = resources.size;
+    testsCount = tests.size;
+    passedCount = tests.docs.filter(d => d.data().passed).length;
+  } catch(e) {}
+
+  document.getElementById('my-rank-card').innerHTML =
+    '<div style="text-align:center;padding:1rem 0.5rem">'
+    + '<div style="font-size:2.5rem;font-weight:800;color:var(--accent)">#' + (rank||'?') + '</div>'
+    + '<div style="font-size:0.85rem;color:var(--text-muted)">out of ' + allUsers.length + ' users</div>'
+    + '<div style="margin:0.75rem 0;color:' + level.color + ';font-weight:600;font-size:1rem">' + level.icon + ' ' + level.label + '</div>'
+    + '<div style="font-size:1.5rem;font-weight:700;color:var(--text-primary)">' + (currentUserData.reputation||0) + ' <span style="font-size:0.85rem;font-weight:400;color:var(--text-muted)">rep</span></div>'
+    + (rank > 1 && diff > 0 ? '<div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.5rem">Need <strong style="color:var(--accent)">' + diff + ' more rep</strong> to advance</div>' : rank === 1 ? '<div style="font-size:0.8rem;color:#f59e0b;margin-top:0.5rem">👑 You are #1!</div>' : '')
+    + '</div>'
+    + '<div style="border-top:1px solid var(--border-soft);padding-top:12px;margin-top:4px">'
+    + '<div style="font-size:0.8rem;font-weight:700;color:var(--text-secondary);margin-bottom:10px">📊 My Activity</div>'
+    + '<div class="act-stat"><span>❓ Doubts Asked</span><span class="act-num">' + doubtsCount + '</span></div>'
+    + '<div class="act-stat"><span>✅ Answers Given</span><span class="act-num">' + answersCount + '</span></div>'
+    + '<div class="act-stat"><span>📚 Resources Shared</span><span class="act-num">' + resourcesCount + '</span></div>'
+    + '<div class="act-stat"><span>📝 Tests Taken</span><span class="act-num">' + testsCount + '</span></div>'
+    + '<div class="act-stat"><span>🏆 Tests Passed</span><span class="act-num">' + passedCount + '</span></div>'
+    + '</div>';
+}
+
+function getLevel(rep) {
+  if (rep >= 1000) return { label:'Expert', icon:'🏆', color:'#f59e0b' };
+  if (rep >= 500)  return { label:'Advanced', icon:'💎', color:'#7c5cfc' };
+  if (rep >= 200)  return { label:'Contributor', icon:'⭐', color:'#4f8ef7' };
+  if (rep >= 50)   return { label:'Member', icon:'🌱', color:'#00d9a3' };
+  return { label:'Newcomer', icon:'🔰', color:'#9ca3af' };
+}
+
+function getLevelGuide() {
+  const levels = [
+    { rep:'1000+', label:'Expert', icon:'🏆', color:'#f59e0b' },
+    { rep:'500+', label:'Advanced', icon:'💎', color:'#7c5cfc' },
+    { rep:'200+', label:'Contributor', icon:'⭐', color:'#4f8ef7' },
+    { rep:'50+', label:'Member', icon:'🌱', color:'#00d9a3' },
+    { rep:'0+', label:'Newcomer', icon:'🔰', color:'#9ca3af' },
+  ];
+  return levels.map(l => `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid var(--border);font-size:0.82rem">
+    <span>${l.icon}</span><span style="color:${l.color};font-weight:600">${l.label}</span><span style="color:var(--text-muted);margin-left:auto">${l.rep} rep</span>
+  </div>`).join('');
+}
+
+function getRepGuide() {
+  const items = [
+    { action:'Ask a doubt', rep:'+2' },
+    { action:'Upvote received on doubt', rep:'+5' },
+    { action:'Answer a doubt', rep:'+3' },
+    { action:'Best answer selected', rep:'+15' },
+    { action:'Upload a resource', rep:'+5' },
+    { action:'Create a post', rep:'+2' },
+    { action:'Pass a test', rep:'+10' },
+    { action:'Fail a test (participation)', rep:'+2' },
+  ];
+  return items.map(i => `<div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border);font-size:0.8rem">
+    <span style="color:var(--text-secondary)">${i.action}</span>
+    <span style="color:var(--accent3);font-weight:700">${i.rep}</span>
+  </div>`).join('');
+}
+</script>
+
+<style>
+.chip {
+  padding:0.4rem 1rem;
+  border:1px solid var(--border);
+  border-radius:20px;
+  background:var(--bg-card);
+  color:var(--text-secondary);
+  cursor:pointer;
+  font-size:0.85rem;
+  font-family:inherit;
+  transition:all .2s;
+  white-space:nowrap;
+}
+.chip:hover { border-color:var(--accent);color:var(--accent) }
+.chip.active { background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600 }
+.filter-chips { display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem }
+@media (max-width: 768px) {
+  /* Filter chips - 2x2 grid */
+  .filter-chips { display:grid !important; grid-template-columns:1fr 1fr; gap:8px; flex-wrap:unset; }
+  .filter-chips .chip { white-space:nowrap; text-align:center; justify-content:center; }
+
+  /* Podium compact */
+  .podium-avatar { width:44px !important; height:44px !important; font-size:1rem !important; }
+  .podium-avatar.large { width:58px !important; height:58px !important; font-size:1.3rem !important; }
+  .podium-name { font-size:0.78rem !important; }
+  .podium-dept { display:none; }
+  .podium-rep { font-size:0.8rem !important; }
+  .podium-stand.first { height:70px !important; }
+  .podium-stand.second { height:50px !important; }
+  .podium-stand.third { height:36px !important; }
+
+  /* Ranked list compact */
+  .lb-row { grid-template-columns:32px 1fr 80px !important; gap:8px !important; padding:10px 12px !important; }
+  .lb-level { display:none; }
+  .lb-rep-num { font-size:0.9rem !important; }
+
+  /* Sidebar below - full width */
+  .lb-layout { grid-template-columns: 1fr !important; }
+  .lb-sidebar { display: block !important; margin-top: 0; }
+
+  /* Sidebar widgets in 2-col grid on mobile */
+  .lb-sidebar { display:grid !important; grid-template-columns:1fr 1fr; gap:10px; }
+  .lb-sidebar .sidebar-widget { margin-bottom:0; padding:14px; }
+  /* Your Ranking spans full width */
+  .lb-sidebar .sidebar-widget:first-child { grid-column: 1 / -1; }
+  .widget-title { font-size:0.82rem !important; margin-bottom:10px !important; }
+
+  /* Your Ranking card compact */
+  #my-rank-card { font-size:0.82rem; }
+  #my-rank-card > div { padding:8px 0 !important; }
+
+  /* Act-stat compact */
+  .act-stat { padding:4px 0 !important; font-size:0.78rem !important; }
+}
+.lb-controls { margin-bottom:1.5rem }
+.lb-layout { display:grid;grid-template-columns:1fr 280px;gap:1.5rem }
+.lb-main { display:flex;flex-direction:column;gap:1rem }
+/* Podium */
+.podium { display:flex;align-items:flex-end;justify-content:center;gap:0;margin-bottom:0.5rem }
+.podium-slot { flex:1;display:flex;flex-direction:column;align-items:center;max-width:200px }
+.podium-crown { font-size:1.5rem;margin-bottom:0.25rem }
+.podium-avatar { width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:1.25rem;font-weight:700;color:white;margin-bottom:0.5rem }
+.podium-avatar.large { width:68px;height:68px;font-size:1.6rem }
+.podium-name { font-weight:700;font-size:0.9rem;text-align:center;margin-bottom:0.1rem }
+.podium-dept { font-size:0.72rem;color:var(--text-muted);text-align:center;margin-bottom:0.3rem }
+.podium-rep { font-size:0.85rem;font-weight:700;color:var(--accent);text-align:center;margin-bottom:0.5rem }
+.podium-stand { width:100%;border-radius:8px 8px 0 0;display:flex;align-items:center;justify-content:center;padding:1rem 0.5rem }
+.podium-stand.first { height:100px;background:linear-gradient(180deg,rgba(245,158,11,0.3),rgba(245,158,11,0.1));border:1px solid rgba(245,158,11,0.4) }
+.podium-stand.second { height:70px;background:linear-gradient(180deg,rgba(107,114,128,0.3),rgba(107,114,128,0.1));border:1px solid rgba(107,114,128,0.4) }
+.podium-stand.third { height:50px;background:linear-gradient(180deg,rgba(180,83,9,0.3),rgba(180,83,9,0.1));border:1px solid rgba(180,83,9,0.4) }
+.podium-rank { font-size:1.5rem }
+/* List */
+.lb-row { display:grid;grid-template-columns:40px 1fr 120px 160px;gap:1rem;align-items:center;padding:0.9rem 1.25rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;margin-bottom:0.5rem;transition:all .15s }
+.lb-row:hover { border-color:var(--accent);background:var(--bg-tertiary) }
+.lb-row.my-row { border-color:var(--accent);background:rgba(79,142,247,0.05) }
+.lb-rank { font-size:1.1rem;font-weight:700;color:var(--text-muted);text-align:center }
+.lb-user { display:flex;align-items:center;gap:0.75rem }
+.lb-avatar { width:36px;height:36px;border-radius:50%;background:var(--bg-tertiary);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:0.9rem;font-weight:700;color:var(--text-primary);flex-shrink:0 }
+.lb-name { font-size:0.9rem;font-weight:600;display:flex;align-items:center;gap:0.4rem }
+.lb-sub { font-size:0.75rem;color:var(--text-muted) }
+.you-badge { padding:0.1rem 0.4rem;background:var(--accent);color:white;border-radius:4px;font-size:0.65rem;font-weight:700 }
+.lb-level { font-size:0.82rem;font-weight:600 }
+.lb-rep-col { display:flex;flex-direction:column;gap:0.3rem }
+.lb-rep-num { font-size:1.1rem;font-weight:700;color:var(--text-primary) }
+.lb-rep-bar-wrap { height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden }
+.lb-rep-bar { height:100%;border-radius:2px;transition:width 0.5s }
+.sidebar-widget { background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1rem }
+.widget-title { font-size:0.9rem;font-weight:700;margin:0 0 0.75rem }
+@media(max-width:900px){.lb-layout{grid-template-columns:1fr}.lb-sidebar{display:none}.lb-row{grid-template-columns:40px 1fr 100px}}
+@media(max-width:600px){.lb-row{grid-template-columns:36px 1fr}.lb-level,.lb-rep-col{display:none}}
+</style>
+</body>
+</html>

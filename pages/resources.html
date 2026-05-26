@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Resources — CampusConnect</title>
+  <link rel="stylesheet" href="../css/main.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+</head>
+<body>
+<div id="app-root"></div>
+
+<script type="module">
+import { requireAuth, getLayoutHTML, getSidebarHTML, toast, showLoading, openModal, closeModal, uploadFile, timeAgo, formatFileSize, getFileIcon, getFileClass, logout } from '../js/app.js?v=76';
+import { db } from '../js/firebase-config.js?v=37';
+import { collection, addDoc, getDocs, getDoc, doc, updateDoc, deleteDoc, increment, query, orderBy, where, limit, startAfter, arrayUnion, arrayRemove, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+let currentUser, currentUserData;
+let lastDoc = null;
+let currentFilter = 'all';
+let currentSort = 'newest';
+let currentType = 'all';
+let searchQuery = '';
+let allResources = [];
+
+requireAuth(async (user, userData) => {
+  currentUser = user;
+  currentUserData = userData;
+  document.getElementById('app-root').innerHTML = getLayoutHTML('Resources', getPageHTML(userData.role), userData.role);
+  initPage();
+});
+
+function getPageHTML(role) {
+  return `
+  <div class="page-content">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Resource Library</h1>
+      <p class="page-subtitle">Share notes, papers, and study materials with your peers</p>
+    </div>
+    <!-- Upload button hidden on mobile - FAB used instead -->
+    <button class="btn btn-primary desktop-upload-btn" onclick="openUploadModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Upload Resource
+    </button>
+  </div>
+
+  <!-- FAB - mobile only -->
+  <button class="fab-upload" onclick="openUploadModal()" title="Upload Resource">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+  </button>
+
+  <div class="resource-controls">
+    <div class="search-bar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="res-search" placeholder="Search resources, subjects, authors..." oninput="handleSearch(this.value)"/>
+    </div>
+    <div class="res-dropdowns">
+      <!-- Type Dropdown -->
+      <div class="custom-dropdown" id="dd-type">
+        <button class="custom-dd-btn" onclick="toggleDD('dd-type')">
+          <span id="dd-type-label">All Types</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="custom-dd-menu">
+          <div class="custom-dd-item active" onclick="selectDD('dd-type','All Types','all','type')">All Types</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-type','📝 Notes','notes','type')">📝 Notes</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-type','📄 Papers','paper','type')">📄 Papers</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-type','💼 Internship','internship','type')">💼 Internship</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-type','📋 Assignment','assignment','type')">📋 Assignment</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-type','📦 Other','other','type')">📦 Other</div>
+        </div>
+      </div>
+      <!-- Year Dropdown -->
+      <div class="custom-dropdown" id="dd-year">
+        <button class="custom-dd-btn" onclick="toggleDD('dd-year')">
+          <span id="dd-year-label">All Years</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="custom-dd-menu">
+          <div class="custom-dd-item active" onclick="selectDD('dd-year','All Years','all','year')">All Years</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-year','1st Year','1','year')">1st Year</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-year','2nd Year','2','year')">2nd Year</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-year','3rd Year','3','year')">3rd Year</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-year','4th Year','4','year')">4th Year</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-year','All Years Relevant','all-years','year')">All Years Relevant</div>
+        </div>
+      </div>
+      <!-- Sort Dropdown -->
+      <div class="custom-dropdown" id="dd-sort">
+        <button class="custom-dd-btn" onclick="toggleDD('dd-sort')">
+          <span id="dd-sort-label">🕐 Newest First</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="custom-dd-menu">
+          <div class="custom-dd-item active" onclick="selectDD('dd-sort','🕐 Newest First','newest','sort')">🕐 Newest First</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-sort','⬇️ Most Downloaded','downloads','sort')">⬇️ Most Downloaded</div>
+          <div class="custom-dd-item" onclick="selectDD('dd-sort','⭐ Top Rated','rating','sort')">⭐ Top Rated</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="resources-grid" class="resources-grid">
+    <div class="loading-spinner">Loading resources...</div>
+  </div>
+  <div id="load-more-res" style="text-align:center;margin-top:1.5rem;display:none">
+    <button class="btn btn-secondary" onclick="loadMore()">Load More</button>
+  </div>
+
+  <!-- Upload Modal -->
+  <div class="modal-overlay" id="uploadModal">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-header">
+        <h2>Upload Resource</h2>
+        <button class="modal-close" onclick="closeModal('uploadModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Resource Title *</label>
+          <input type="text" class="form-input" id="res-title" placeholder="e.g., Data Structures Notes Unit 3"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea class="form-input" id="res-desc" rows="3" placeholder="Brief description of what this resource covers..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Resource Type *</label>
+            <select class="form-input" id="res-type">
+              <option value="">Select type...</option>
+              <option value="notes">📝 Notes</option>
+              <option value="paper">📄 Previous Paper</option>
+              <option value="internship">💼 Internship Material</option>
+              <option value="assignment">📋 Assignment</option>
+              <option value="other">📦 Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subject *</label>
+            <input type="text" class="form-input" id="res-subject" placeholder="e.g., Data Structures"/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Target Year</label>
+            <select class="form-input" id="res-year">
+              <option value="all-years">All Years</option>
+              <option value="1">1st Year</option>
+              <option value="2">2nd Year</option>
+              <option value="3">3rd Year</option>
+              <option value="4">4th Year</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Department</label>
+            <select class="form-input" id="res-dept">
+              <option value="CSE">CSE</option>
+              <option value="ECE">ECE</option>
+              <option value="EEE">EEE</option>
+              <option value="MECH">MECH</option>
+              <option value="CIVIL">CIVIL</option>
+              <option value="IT">IT</option>
+              <option value="All">All Departments</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">File *</label>
+          <div class="file-upload-zone" id="upload-zone" onclick="document.getElementById('res-file').click()">
+            <div class="upload-icon">📁</div>
+            <p>Click to select file or drag & drop</p>
+            <p style="font-size:0.75rem;color:var(--text-muted)">PDF, DOC, DOCX, PPT, PPTX, ZIP (Max 50MB)</p>
+            <div id="file-chosen" style="display:none;margin-top:0.5rem;font-weight:600;color:var(--accent)"></div>
+          </div>
+          <input type="file" id="res-file" style="display:none" accept=".pdf,.doc,.docx,.ppt,.pptx,.zip,.rar,.txt" onchange="handleFileSelect(this)"/>
+        </div>
+        <div id="upload-progress-wrap" style="display:none">
+          <div class="progress-bar-wrap">
+            <div class="progress-bar" id="upload-prog" style="width:0%"></div>
+          </div>
+          <p id="upload-prog-text" style="font-size:0.8rem;color:var(--text-muted);margin-top:0.3rem">Uploading...</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('uploadModal')">Cancel</button>
+        <button class="btn btn-primary" id="upload-btn" onclick="submitUpload()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Upload
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resource Detail Modal -->
+  <div class="modal-overlay" id="detailModal">
+    <div class="modal" style="max-width:600px">
+      <div class="modal-header">
+        <h2 id="detail-title">Resource Details</h2>
+        <button class="modal-close" onclick="closeModal('detailModal')">✕</button>
+      </div>
+      <div class="modal-body" id="detail-body"></div>
+      <div class="modal-footer" id="detail-footer"></div>
+    </div>
+  </div>
+  `;
+}
+
+let filterYear = 'all';
+
+function initPage() {
+  window.openModal = openModal;
+  window._logout = logout;
+  window.closeModal = closeModal;
+  window.openUploadModal = () => openModal('uploadModal');
+  window.handleSearch = (v) => { searchQuery = v.toLowerCase(); renderResources(); };
+  window.filterByType = (type, el) => {
+    currentType = type;
+    document.querySelectorAll('#type-chips .chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    renderResources();
+  };
+  window.filterByYear = (year, el) => {
+    filterYear = year;
+    document.querySelectorAll('#year-chips .chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    renderResources();
+  };
+  window.handleSort = (val) => { currentSort = val; renderResources(); };
+  window.handleFileSelect = (input) => {
+    if (input.files[0]) {
+      document.getElementById('file-chosen').style.display = 'block';
+      document.getElementById('file-chosen').textContent = '✅ ' + input.files[0].name + ' (' + formatFileSize(input.files[0].size) + ')';
+    }
+  };
+  window.submitUpload = submitUpload;
+  window.downloadResource = downloadResource;
+  window.rateResource = rateResource;
+  window.openDetail = openDetail;
+  window.deleteResource = deleteResource;
+  window.loadMore = () => loadResources(true);
+
+  // Drag and drop
+  const zone = document.getElementById('upload-zone');
+  if (zone) {
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault(); zone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        document.getElementById('res-file').files = e.dataTransfer.files;
+        document.getElementById('file-chosen').style.display = 'block';
+        document.getElementById('file-chosen').textContent = '✅ ' + file.name + ' (' + formatFileSize(file.size) + ')';
+      }
+    });
+  }
+
+  loadResources();
+  loadStats();
+}
+
+async function loadResources(append = false) {
+  if (!append) { allResources = []; lastDoc = null; }
+  try {
+    let q = query(collection(db, 'resources'), orderBy('createdAt', 'desc'), limit(12));
+    if (lastDoc) q = query(collection(db, 'resources'), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(12));
+    const snap = await getDocs(q);
+    if (!snap.empty) lastDoc = snap.docs[snap.docs.length - 1];
+    snap.forEach(d => { if (!allResources.find(r => r.id === d.id)) allResources.push({ id: d.id, ...d.data() }); });
+    renderResources();
+    document.getElementById('load-more-res').style.display = snap.docs.length === 12 ? 'block' : 'none';
+  } catch(e) { console.error(e); }
+}
+
+function renderResources() {
+  let filtered = [...allResources];
+  if (searchQuery) filtered = filtered.filter(r => r.title?.toLowerCase().includes(searchQuery) || r.subject?.toLowerCase().includes(searchQuery) || r.authorName?.toLowerCase().includes(searchQuery));
+  if (currentType !== 'all') filtered = filtered.filter(r => r.type === currentType);
+  if (filterYear !== 'all') filtered = filtered.filter(r => r.year === filterYear || r.year === 'all-years');
+
+  if (currentSort === 'downloads') filtered.sort((a,b) => (b.downloads||0) - (a.downloads||0));
+  else if (currentSort === 'rating') filtered.sort((a,b) => (b.avgRating||0) - (a.avgRating||0));
+  else filtered.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+
+  const grid = document.getElementById('resources-grid');
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">📂</div><h3>No resources found</h3><p>Be the first to upload a resource!</p></div>`;
+    return;
+  }
+  grid.innerHTML = filtered.map(r => renderCard(r)).join('');
+}
+
+function renderCard(r) {
+  const icon = getFileIcon(r.fileName || '');
+  const cls = getFileClass(r.fileName || '');
+  const stars = renderStars(r.avgRating || 0);
+  const myRating = r.ratings?.[currentUser.uid] || 0;
+  const typeLabels = { notes:'Notes', paper:'Prev Paper', internship:'Internship', assignment:'Assignment', other:'Other' };
+  const typeColors = { notes:'var(--accent)', paper:'var(--accent2)', internship:'var(--accent3)', assignment:'#f59e0b', other:'var(--text-muted)' };
+  return `
+  <div class="resource-card" onclick="openDetail('${r.id}')">
+    <div class="resource-card-header">
+      <div class="file-icon-big ${cls}">${icon}</div>
+      <div class="resource-badge" style="background:${typeColors[r.type]||'var(--accent)'}20;color:${typeColors[r.type]||'var(--accent)'};border:1px solid ${typeColors[r.type]||'var(--accent)'}40">${typeLabels[r.type]||r.type}</div>
+    </div>
+    <div class="resource-card-body">
+      <h3 class="resource-title">${r.title}</h3>
+      <p class="resource-desc">${r.description || 'No description provided.'}</p>
+      <div class="resource-meta">
+        <span class="meta-tag">📚 ${r.subject || 'General'}</span>
+        <span class="meta-tag">📅 ${r.year === 'all-years' ? 'All Years' : (r.year || '?') + 'st Year'}</span>
+        <span class="meta-tag">🏛️ ${r.dept || 'All'}</span>
+      </div>
+    </div>
+    <div class="resource-card-footer">
+      <div class="resource-author">
+        <div class="avatar-sm">${(r.authorName||'U')[0]}</div>
+        <div>
+          <div class="author-name">${r.authorName || 'Unknown'}</div>
+          <div class="author-time">${timeAgo(r.createdAt?.toDate?.())}</div>
+        </div>
+      </div>
+      <div class="resource-actions-row">
+        <span class="res-stat">⬇️ ${r.downloads || 0}</span>
+        <span class="res-stat">⭐ ${(r.avgRating||0).toFixed(1)}</span>
+        <button class="btn btn-sm btn-primary" onclick="event.stopPropagation();downloadResource('${r.id}','${encodeURIComponent(r.fileUrl||'')}','${encodeURIComponent(r.fileName||'')}')">Download</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderStars(avg) {
+  return [1,2,3,4,5].map(i => `<span style="color:${i<=Math.round(avg)?'#f59e0b':'var(--border)'}">★</span>`).join('');
+}
+
+async function openDetail(id) {
+  const snap = await getDoc(doc(db, 'resources', id));
+  if (!snap.exists()) return;
+  const r = { id, ...snap.data() };
+  const myRating = r.ratings?.[currentUser.uid] || 0;
+  const canDelete = r.authorId === currentUser.uid || currentUserData.role === 'admin';
+  const typeColors = { notes:'var(--accent)', paper:'var(--accent2)', internship:'var(--accent3)', assignment:'#f59e0b', other:'var(--text-muted)' };
+
+  document.getElementById('detail-title').textContent = r.title;
+  document.getElementById('detail-body').innerHTML = `
+    <div class="detail-file-preview">
+      <div class="file-icon-xl ${getFileClass(r.fileName||'')}">${getFileIcon(r.fileName||'')}</div>
+      <div class="detail-file-info">
+        <div class="detail-file-name">${r.fileName || 'Unknown file'}</div>
+        <div class="detail-file-size">${formatFileSize(r.fileSize || 0)}</div>
+      </div>
+    </div>
+    ${r.description ? `<p style="margin:1rem 0;color:var(--text-secondary)">${r.description}</p>` : ''}
+    <div class="detail-tags" style="margin:1rem 0">
+      <span class="meta-tag">📚 ${r.subject||'General'}</span>
+      <span class="meta-tag">📅 ${r.year==='all-years'?'All Years':(r.year||'?')+'st Year'}</span>
+      <span class="meta-tag">🏛️ ${r.dept||'All'}</span>
+      <span class="meta-tag" style="background:${typeColors[r.type]||'var(--accent)'}20;color:${typeColors[r.type]||'var(--accent)'}">${r.type||'Other'}</span>
+    </div>
+    <div class="detail-stats-row">
+      <div class="detail-stat"><div class="detail-stat-num">⬇️ ${r.downloads||0}</div><div>Downloads</div></div>
+      <div class="detail-stat"><div class="detail-stat-num">⭐ ${(r.avgRating||0).toFixed(1)}</div><div>Avg Rating</div></div>
+      <div class="detail-stat"><div class="detail-stat-num">👤 ${Object.keys(r.ratings||{}).length}</div><div>Ratings</div></div>
+    </div>
+    <div class="detail-author-row">
+      <div class="avatar-sm">${(r.authorName||'U')[0]}</div>
+      <div><div class="author-name">${r.authorName}</div><div class="author-time">Uploaded ${timeAgo(r.createdAt?.toDate?.())}</div></div>
+    </div>
+    <div class="rating-section">
+      <p style="font-weight:600;margin-bottom:0.5rem">Rate this resource:</p>
+      <div class="star-rating" id="star-rating-${id}">
+        ${[1,2,3,4,5].map(i => `<button class="star-btn ${i<=myRating?'active':''}" onclick="rateResource('${id}',${i})" data-val="${i}">★</button>`).join('')}
+      </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-top:0.3rem">Your rating: ${myRating || 'Not rated'}</p>
+    </div>
+  `;
+  document.getElementById('detail-footer').innerHTML = `
+    ${canDelete ? `<button class="btn btn-danger" onclick="deleteResource('${id}')">🗑 Delete</button>` : ''}
+    <div style="flex:1"></div>
+    <button class="btn btn-secondary" onclick="closeModal('detailModal')">Close</button>
+    <button class="btn btn-primary" onclick="downloadResource('${id}','${encodeURIComponent(r.fileUrl||'')}','${encodeURIComponent(r.fileName||'')}')">⬇️ Download</button>
+  `;
+  openModal('detailModal');
+}
+
+async function downloadResource(id, urlEncoded, nameEncoded) {
+  let url = decodeURIComponent(urlEncoded);
+  if (!url) { toast('File URL not available', 'error'); return; }
+  try {
+    await updateDoc(doc(db, 'resources', id), { downloads: increment(1) });
+    // Force fl_attachment in Cloudinary URL so it downloads instead of opening
+    // Replace /upload/ with /upload/fl_attachment/ to trigger download
+    const downloadUrl = url.replace('/upload/', '/upload/fl_attachment/');
+    window.open(downloadUrl, '_blank');
+    toast('Download started!', 'success');
+    allResources = allResources.map(r => r.id === id ? { ...r, downloads: (r.downloads||0)+1 } : r);
+    renderResources();
+  } catch(e) { toast('Download failed', 'error'); }
+}
+
+async function rateResource(id, rating) {
+  try {
+    const ref = doc(db, 'resources', id);
+    const snap = await getDoc(ref);
+    const data = snap.data();
+    const ratings = { ...data.ratings, [currentUser.uid]: rating };
+    const avg = Object.values(ratings).reduce((a,b)=>a+b,0) / Object.keys(ratings).length;
+    await updateDoc(ref, { [`ratings.${currentUser.uid}`]: rating, avgRating: avg });
+    document.querySelectorAll(`#star-rating-${id} .star-btn`).forEach(btn => {
+      btn.classList.toggle('active', parseInt(btn.dataset.val) <= rating);
+    });
+    toast('Rating saved!', 'success');
+    allResources = allResources.map(r => r.id === id ? { ...r, ratings, avgRating: avg } : r);
+    renderResources();
+  } catch(e) { toast('Failed to rate', 'error'); }
+}
+
+async function deleteResource(id) {
+  if (!confirm('Delete this resource permanently?')) return;
+  try {
+    await deleteDoc(doc(db, 'resources', id));
+    allResources = allResources.filter(r => r.id !== id);
+    renderResources();
+    closeModal('detailModal');
+    toast('Resource deleted', 'success');
+  } catch(e) { toast('Delete failed', 'error'); }
+}
+
+async function submitUpload() {
+  const title = document.getElementById('res-title').value.trim();
+  const desc = document.getElementById('res-desc').value.trim();
+  const type = document.getElementById('res-type').value;
+  const subject = document.getElementById('res-subject').value.trim();
+  const year = document.getElementById('res-year').value;
+  const dept = document.getElementById('res-dept').value;
+  const file = document.getElementById('res-file').files[0];
+
+  if (!title || !type || !subject || !file) { toast('Please fill all required fields and select a file', 'error'); return; }
+  if (file.size > 50 * 1024 * 1024) { toast('File too large. Max 50MB', 'error'); return; }
+
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true; btn.textContent = 'Uploading...';
+  document.getElementById('upload-progress-wrap').style.display = 'block';
+
+  try {
+    const path = `resources/${currentUser.uid}/${Date.now()}_${file.name}`;
+    const url = await uploadFile(file, path, (pct) => {
+      document.getElementById('upload-prog').style.width = pct + '%';
+      document.getElementById('upload-prog-text').textContent = `Uploading... ${pct}%`;
+    });
+    const docData = {
+      title, description: desc, type, subject, year, dept,
+      fileUrl: url, fileName: file.name, fileSize: file.size,
+      authorId: currentUser.uid, authorName: currentUserData.name || currentUserData.email,
+      downloads: 0, avgRating: 0, ratings: {},
+      createdAt: serverTimestamp()
+    };
+    const newDoc = await addDoc(collection(db, 'resources'), docData);
+    await updateDoc(doc(db, 'users', currentUser.uid), { reputation: increment(5) });
+    allResources.unshift({ id: newDoc.id, ...docData, createdAt: { toDate: () => new Date(), toMillis: () => Date.now() } });
+    renderResources();
+    closeModal('uploadModal');
+    toast('Resource uploaded successfully! +5 rep', 'success');
+    document.getElementById('res-title').value = '';
+    document.getElementById('res-desc').value = '';
+    document.getElementById('res-type').value = '';
+    document.getElementById('res-subject').value = '';
+    document.getElementById('res-file').value = '';
+    document.getElementById('file-chosen').style.display = 'none';
+    document.getElementById('upload-progress-wrap').style.display = 'none';
+  } catch(e) { console.error(e); toast('Upload failed: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Upload'; }
+}
+
+async function loadStats() {
+  try {
+    const snap = await getDocs(collection(db, 'resources'));
+    let totalDownloads = 0, mine = 0;
+    const subjects = new Set();
+    snap.forEach(d => {
+      const data = d.data();
+      totalDownloads += data.downloads || 0;
+      if (data.authorId === currentUser.uid) mine++;
+      if (data.subject) subjects.add(data.subject.toLowerCase());
+    });
+    document.getElementById('stat-total').textContent = snap.size;
+    document.getElementById('stat-downloads').textContent = totalDownloads;
+    document.getElementById('stat-mine').textContent = mine;
+    document.getElementById('stat-subjects').textContent = subjects.size;
+  } catch(e) {}
+}
+
+  window.toggleDD = function(id) {
+    document.querySelectorAll('.custom-dropdown').forEach(function(d) { if (d.id !== id) d.classList.remove('open'); });
+    document.getElementById(id).classList.toggle('open');
+  };
+  window.selectDD = function(id, label, val, type) {
+    document.getElementById(id + '-label').textContent = label;
+    document.querySelectorAll('#' + id + ' .custom-dd-item').forEach(function(i) { i.classList.remove('active'); });
+    event.target.classList.add('active');
+    document.getElementById(id).classList.remove('open');
+    if (type === 'type') { currentType = val; currentPage = 0; renderResources(); }
+    else if (type === 'year') { currentYear = val; currentPage = 0; renderResources(); }
+    else if (type === 'sort') { handleSort(val); }
+  };
+  document.addEventListener('click', function(e) { if (!e.target.closest('.custom-dropdown')) document.querySelectorAll('.custom-dropdown').forEach(function(d) { d.classList.remove('open'); }); });
+</script>
+
+<style>
+.resource-stats { display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem }
+.resource-controls { background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1.5rem;display:flex;flex-direction:column;gap:0.75rem }
+.search-bar { display:flex;align-items:center;gap:0.75rem;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;padding:0.4rem 1rem;max-width:480px;width:100% }
+.search-bar input { background:none;border:none;outline:none;color:var(--text-primary);width:100%;font-size:0.88rem }
+.filter-row { display:flex;align-items:center;gap:1rem;flex-wrap:wrap }
+.year-chips { display:flex;gap:0.5rem;flex-wrap:wrap }
+.resources-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.25rem }
+.resource-card { background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;cursor:pointer;transition:all .2s;display:flex;flex-direction:column;gap:0.75rem }
+.resource-card:hover { border-color:var(--accent);transform:translateY(-2px);box-shadow:0 8px 24px rgba(79,142,247,0.12) }
+.resource-card-header { display:flex;align-items:flex-start;justify-content:space-between }
+.file-icon-big { font-size:2.5rem;width:56px;height:56px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--bg-tertiary) }
+.file-icon-xl { font-size:3.5rem;width:80px;height:80px;display:flex;align-items:center;justify-content:center;border-radius:16px;background:var(--bg-tertiary) }
+.resource-badge { padding:0.25rem 0.6rem;border-radius:20px;font-size:0.72rem;font-weight:600 }
+.resource-title { font-size:1rem;font-weight:600;color:var(--text-primary);margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden }
+.resource-desc { font-size:0.85rem;color:var(--text-muted);margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden }
+.resource-meta { display:flex;flex-wrap:wrap;gap:0.4rem }
+.meta-tag { padding:0.2rem 0.5rem;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;font-size:0.72rem;color:var(--text-muted) }
+.resource-card-footer { display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:0.75rem;border-top:1px solid var(--border) }
+.resource-author { display:flex;align-items:center;gap:0.5rem }
+.avatar-sm { width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;color:white;flex-shrink:0 }
+.author-name { font-size:0.8rem;font-weight:600;color:var(--text-primary) }
+.author-time { font-size:0.72rem;color:var(--text-muted) }
+.resource-actions-row { display:flex;align-items:center;gap:0.5rem }
+.res-stat { font-size:0.8rem;color:var(--text-muted) }
+.file-upload-zone { border:2px dashed var(--border);border-radius:10px;padding:2rem;text-align:center;cursor:pointer;transition:all .2s;color:var(--text-muted) }
+.file-upload-zone:hover,.file-upload-zone.drag-over { border-color:var(--accent);background:rgba(79,142,247,0.05) }
+.upload-icon { font-size:2.5rem;margin-bottom:0.5rem }
+.progress-bar-wrap { background:var(--bg-tertiary);border-radius:6px;height:6px;overflow:hidden }
+.progress-bar { height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .3s;border-radius:6px }
+.detail-file-preview { display:flex;align-items:center;gap:1rem;padding:1rem;background:var(--bg-tertiary);border-radius:10px }
+.detail-file-name { font-weight:600;color:var(--text-primary) }
+.detail-file-size { font-size:0.8rem;color:var(--text-muted) }
+.detail-stats-row { display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin:1rem 0 }
+.detail-stat { text-align:center;padding:0.75rem;background:var(--bg-tertiary);border-radius:8px;font-size:0.8rem;color:var(--text-muted) }
+.detail-stat-num { font-size:1.2rem;font-weight:700;color:var(--text-primary) }
+.detail-author-row { display:flex;align-items:center;gap:0.75rem;padding:0.75rem 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-bottom:1rem }
+.rating-section { margin-top:1rem }
+.star-rating { display:flex;gap:0.25rem }
+.star-btn { background:none;border:none;font-size:1.75rem;cursor:pointer;color:var(--border);transition:color .15s;padding:0 }
+.star-btn.active,.star-btn:hover { color:#f59e0b }
+.select-input { background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.75rem;color:var(--text-primary);font-size:0.9rem }
+@media(max-width:768px){.resource-stats{grid-template-columns:repeat(2,1fr)}.filter-row{flex-direction:column;align-items:flex-start}}
+  .res-dropdowns { display:flex;gap:10px;margin-top:12px;align-items:center; }
+  .res-select {
+    appearance:none;-webkit-appearance:none;
+    background:var(--bg-card);
+    border:1.5px solid var(--border-soft);
+    border-radius:var(--radius-sm);
+    padding:8px 36px 8px 14px;
+    color:var(--text-primary);
+    font-size:0.85rem;
+    font-family:var(--font-main);
+    font-weight:500;
+    cursor:pointer;
+    transition:all 0.18s;
+    width:auto;
+    min-width:140px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b9abf' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat:no-repeat;
+    background-position:right 12px center;
+  }
+  .res-select:hover { border-color:var(--accent); }
+  .res-select:focus { outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft); }
+  /* Custom Dropdown */
+  .res-dropdowns { display:flex;gap:10px;margin-top:12px;align-items:center;flex-wrap:wrap; }
+  .custom-dropdown { position:relative; }
+  .custom-dd-btn {
+    display:flex;align-items:center;gap:8px;
+    padding:8px 14px;
+    background:var(--bg-card);
+    border:1.5px solid var(--border-soft);
+    border-radius:var(--radius-sm);
+    color:var(--text-primary);
+    font-size:0.85rem;font-weight:500;
+    cursor:pointer;font-family:var(--font-main);
+    transition:all 0.18s;
+    white-space:nowrap;min-width:140px;
+    justify-content:space-between;
+  }
+  .custom-dd-btn:hover { border-color:var(--accent);color:var(--accent); }
+  .custom-dropdown.open .custom-dd-btn { border-color:var(--accent);color:var(--accent); }
+  .custom-dropdown.open .custom-dd-btn svg { transform:rotate(180deg); }
+  .custom-dd-btn svg { transition:transform 0.18s;flex-shrink:0; }
+  .custom-dd-menu {
+    display:none;position:absolute;top:calc(100% + 6px);left:0;
+    background:var(--bg-card);
+    border:1.5px solid var(--border-soft);
+    border-radius:var(--radius);
+    box-shadow:0 8px 24px rgba(0,0,0,0.3);
+    min-width:100%;z-index:100;
+    overflow:hidden;
+  }
+  .custom-dropdown.open .custom-dd-menu { display:block; }
+  .custom-dd-item {
+    padding:10px 16px;
+    font-size:0.85rem;color:var(--text-secondary);
+    cursor:pointer;transition:all 0.15s;
+    font-family:var(--font-main);
+  }
+  .custom-dd-item:hover { background:var(--bg-hover);color:var(--text-primary); }
+  .custom-dd-item.active { color:var(--accent);font-weight:600;background:var(--accent-soft); }
+
+  /* FAB upload button - mobile only */
+  .fab-upload {
+    display: none;
+    position: fixed;
+    bottom: 80px;
+    right: 16px;
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 16px rgba(79,142,247,0.5);
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    z-index: 150;
+    transition: var(--transition);
+  }
+  .fab-upload:active { transform: scale(0.92); }
+
+  @media (max-width: 768px) {
+    /* Show FAB, hide desktop button */
+    .fab-upload { display: flex; }
+    .desktop-upload-btn { display: none !important; }
+
+    /* Search full width */
+    .search-bar { max-width: 100% !important; }
+
+    /* All 3 dropdowns in one row */
+    .res-dropdowns { display:flex !important; flex-wrap:nowrap !important; gap:6px !important; margin-top:10px !important; }
+    .custom-dd-btn { min-width: 0 !important; font-size: 0.78rem !important; padding: 7px 10px !important; }
+
+    /* Resource controls compact */
+    .resource-controls { padding: 12px !important; }
+
+    /* Resource card compact */
+    .resource-card { padding: 14px !important; }
+  }
+</style>
+</body>
+</html>
